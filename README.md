@@ -11,23 +11,29 @@ just got interested in, a confident answer to a question you didn't ask.
 This puts something in the gap.
 
 ```mermaid
-flowchart LR
-    subgraph CR["Claude's room — large, costs you nothing"]
-        direction TB
-        W["thinking, drafts,<br/>false starts"]
-        N["the orientation file<br/>what Claude has understood<br/>about you, this session"]
-    end
-    subgraph YR["Your room — small, yours"]
-        R["the reply"]
-    end
-    W --> D{"the door<br/>read_the_room"}
-    N --> D
-    D --> R
+flowchart TD
+    M["your message"] --> W
 
-    style N fill:#e8e3f5,stroke:#6b5b95,color:#1a1a1a
+    subgraph CR["Claude's room — none of this reaches you"]
+        direction TB
+        W["works, drafts a reply"]
+        F["the orientation file<br/>what it has understood about you"]
+        D{"the door<br/>read_the_room"}
+        W -->|"writes to it as it learns"| F
+        F -->|"handed back here,<br/>and nowhere else"| D
+        W -->|"draft in hand"| D
+        D -->|"draft no longer fits"| W
+    end
+
+    D --> R["the reply — the only thing<br/>that crosses into your room"]
+
+    style F fill:#e8e3f5,stroke:#6b5b95,color:#1a1a1a
     style D fill:#e0a544,stroke:#8a5a00,color:#1a1a1a
     style R fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
 ```
+
+The file is written throughout the turn and read at one moment — the door,
+immediately before Claude speaks. It never crosses into your room.
 
 ## What it does
 
