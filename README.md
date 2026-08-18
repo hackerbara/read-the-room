@@ -34,8 +34,8 @@ flowchart TD
 
 The file is written throughout the turn and read at one moment — the door,
 immediately before Claude speaks. The door is a decision, not a formality:
-what came back can send Claude back to the file, or change the reply. Neither
-the file nor the working ever crosses into your room.
+what comes back can change the reply, or change the file. Neither the file nor
+the working ever crosses into your room.
 
 ## What it does
 
