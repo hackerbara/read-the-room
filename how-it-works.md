@@ -31,7 +31,7 @@ flowchart TD
     A["You send a message"] --> B["The door shuts<br/>(automatic, every turn)"]
     B --> C["Claude works<br/>reads files, runs searches"]
     C --> D["Claude drafts a reply"]
-    D --> E{"Hiding turned on,<br/>and the text is long?"}
+    D --> E{"Is the text long?"}
     E -->|"yes"| F["You see the marker<br/>text stays in the transcript"]
     E -->|"no"| G["You see it as normal"]
     F --> H["THROUGH THE DOOR<br/>read_the_room"]
@@ -104,8 +104,6 @@ long enough to prune.
 
 ## What you see, and what Claude sees
 
-With hiding turned on:
-
 ```mermaid
 flowchart LR
     subgraph ITS["Claude's room"]
@@ -130,6 +128,10 @@ flowchart LR
 `ctrl+O` is Claude Code's toggle for showing everything in the conversation.
 Nothing is deleted — hidden text stays in the transcript and that toggle opens
 it. The hiding is display-only; Claude still sees everything it wrote.
+
+Hiding is on by default; `CLAUDE_ORIENTATION_SUPPRESS=0` turns it off and you
+see every word Claude writes. The first time text is hidden in a session, the
+marker expands into a short paragraph explaining what happened.
 
 The orientation file is never shown to you at either setting. You can read it
 if you want — it's a file on disk — but it's written for Claude.
@@ -200,10 +202,11 @@ those documents means Claude's room** — the opposite of what it means here.
 
 ## Configuration
 
-One variable is worth knowing:
+One variable is worth knowing, and you only need it if you want the default
+turned off:
 
 ```sh
-export CLAUDE_ORIENTATION_SUPPRESS=1   # turn on hiding of working notes
+export CLAUDE_ORIENTATION_SUPPRESS=0   # show working notes instead of hiding them
 ```
 
 Several others exist for tuning thresholds — the length at which text gets

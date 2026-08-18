@@ -62,8 +62,9 @@ function stripTrailingNL(s) {
 }
 
 function run(raw) {
+  // On by default. Opt out with CLAUDE_ORIENTATION_SUPPRESS=0/off/false/no.
   const suppress = process.env.CLAUDE_ORIENTATION_SUPPRESS;
-  if (!['1', 'on', 'true', 'yes', 'ON', 'TRUE', 'YES'].includes(suppress)) return;
+  if (['0', 'off', 'false', 'no', 'OFF', 'FALSE', 'NO'].includes(suppress)) return;
 
   if (!raw) return;
   let input;

@@ -35,10 +35,11 @@ it. It lasts the session and then it's gone — this is orientation, not memory.
 where it scrolls out of reach — at the last moment, when it can still change
 what gets said.
 
-**Can hide Claude's working notes** — the drafting and thinking-out-loud that
-happens before a reply. Turned on, long stretches of it are replaced on your
-screen by one line. Nothing is deleted; the text stays in the transcript and
-`ctrl+O` opens it. **This part is off unless you turn it on** (see Install).
+**Hides Claude's working notes** — the drafting and thinking-out-loud that
+happens before a reply. Long stretches of it are replaced on your screen by one
+line. Nothing is deleted; the text stays in the transcript and `ctrl+O` opens
+it. The first time it happens in a session, the line expands to explain itself.
+**To see everything instead, set `CLAUDE_ORIENTATION_SUPPRESS=0`.**
 
 ## What it can't do
 
@@ -74,16 +75,15 @@ it. Without Node, nothing here runs and it fails quietly.
 claude plugin marketplace add hackerbara/read-the-room && claude plugin install read-the-room@read-the-room
 ```
 
-Restart Claude Code.
+Restart Claude Code. Nothing else to configure.
 
-To turn on hiding of Claude's working notes:
+If you would rather see everything Claude writes, including its working notes:
 
 ```sh
-export CLAUDE_ORIENTATION_SUPPRESS=1
+export CLAUDE_ORIENTATION_SUPPRESS=0
 ```
 
-Leave it unset and you see everything, exactly as you do now. The orientation
-file still works.
+The orientation file works the same either way.
 
 ## Use
 
