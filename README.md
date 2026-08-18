@@ -18,14 +18,14 @@ flowchart TD
         direction TB
         W["works, drafts a reply"]
         F["the orientation file<br/>what it has understood about you"]
-        D{"the door<br/>read_the_room"}
+        D{"the door<br/>is this what they asked for?"}
         W -->|"writes to it as it learns"| F
-        F -->|"handed back here,<br/>and nowhere else"| D
         W -->|"draft in hand"| D
-        D -->|"draft no longer fits"| W
+        F -->|"read here, and nowhere else"| D
+        D -->|"and updated when the read<br/>changes what it understands"| F
     end
 
-    D --> R["the reply — the only thing<br/>that crosses into your room"]
+    D -->|"goes in"| R["the reply — the only thing<br/>that crosses into your room"]
 
     style F fill:#e8e3f5,stroke:#6b5b95,color:#1a1a1a
     style D fill:#e0a544,stroke:#8a5a00,color:#1a1a1a
@@ -33,7 +33,9 @@ flowchart TD
 ```
 
 The file is written throughout the turn and read at one moment — the door,
-immediately before Claude speaks. It never crosses into your room.
+immediately before Claude speaks. The door is a decision, not a formality:
+what came back can send Claude back to the file, or change the reply. Neither
+the file nor the working ever crosses into your room.
 
 ## What it does
 
