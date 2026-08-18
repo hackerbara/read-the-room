@@ -1,0 +1,35 @@
+# Where they are — session {{SESSION_ID}}
+# Yours to keep. They never have to read this.
+# Keep it about them. If a line is about how you are doing, it belongs in the
+# workspace — the text you write before you cross the door.
+# A wrong line here is cheap to fix and expensive to leave.
+
+## What they are doing right now
+
+
+## What they asked for
+
+
+## What they asked for that has not been delivered
+# A request stays on this list until it has been done or they have withdrawn
+# it. Not "I mentioned it" — done. If you are about to reply and this section
+# is not empty, that is the reply's first business.
+
+
+## Their words
+# Terms they use themselves. Use these back. Do not substitute your own
+# vocabulary for theirs, and mark anything you coined as yours.
+
+
+## What they have not seen
+# Tool results, subagent reports, files, findings — anything live for you and
+# absent for them. This is usually the field that changes your reply the most.
+
+
+## What they have already settled
+# Decisions made, corrections given, concerns discharged. They should not have
+# to say any of these a second time.
+
+
+## What I do not know about where they are
+# Write the gap rather than guessing across it.

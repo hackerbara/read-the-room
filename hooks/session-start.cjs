@@ -48,13 +48,29 @@ function resolveDocsDir(legacyHome) {
       const srcDir = path.join(pluginRoot, 'docs');
       copyTemplateIfMissing(pluginData, srcDir, 'orientation.md');
       copyTemplateIfMissing(pluginData, srcDir, 'orientation-brief.md');
+      copyTemplateIfMissing(pluginData, srcDir, 'orientation-template.txt');
     }
-    return { dir: pluginData, fullName: 'orientation.md', briefName: 'orientation-brief.md' };
+    return {
+      dir: pluginData,
+      fullName: 'orientation.md',
+      briefName: 'orientation-brief.md',
+      templateName: 'orientation-template.txt',
+    };
   }
   if (!pluginRoot) {
-    return { dir: legacyHome, fullName: 'ORIENTATION.md', briefName: 'ORIENTATION-BRIEF.md' };
+    return {
+      dir: legacyHome,
+      fullName: 'ORIENTATION.md',
+      briefName: 'ORIENTATION-BRIEF.md',
+      templateName: 'orientation-template.txt',
+    };
   }
-  return { dir: path.join(pluginRoot, 'docs'), fullName: 'orientation.md', briefName: 'orientation-brief.md' };
+  return {
+    dir: path.join(pluginRoot, 'docs'),
+    fullName: 'orientation.md',
+    briefName: 'orientation-brief.md',
+    templateName: 'orientation-template.txt',
+  };
 }
 
 function run(raw) {
@@ -62,7 +78,7 @@ function run(raw) {
   const docs = resolveDocsDir(orientHome);
   const fullDoc = path.join(docs.dir, docs.fullName);
   const briefDoc = path.join(docs.dir, docs.briefName);
-  const template = path.join(orientHome, 'orientation-template.txt');
+  const template = path.join(docs.dir, docs.templateName);
   let text = fullDoc;
   if (!readable(text)) return;
 

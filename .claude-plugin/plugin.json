@@ -1,7 +1,7 @@
 {
   "name": "read-the-room",
   "displayName": "Read the Room",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Keeps Claude's notes on you, and hands them back in the moment before it replies.",
   "author": {
     "name": "Hackerbara"
