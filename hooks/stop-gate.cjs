@@ -84,7 +84,11 @@ function run(raw) {
     let curTurn = '';
     try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
     try { fs.unlinkSync(aftertalkFile); } catch {}
-    if (aftertalk && curTurn && aftertalk === curTurn) {
+    // On a re-run this signal has already fired for this turn, and the gate is
+    // still SPOKEN, so anything written during the re-run gets hidden and
+    // rewrites .aftertalk. Emitting again would loop.
+    const rerun = jqStr(input.stop_hook_active, 'false') === 'true';
+    if (!rerun && aftertalk && curTurn && aftertalk === curTurn) {
       const ctx = `The door closed behind you and you wrote more after it. Did you mean that for
 them? Either way, the room is probably worth a one-line update.`;
       // jq -c always appends a trailing newline.
