@@ -51,10 +51,7 @@ text stays in the transcript and `ctrl+O` opens it. Set
 
 ## What it can't do
 
-Nothing inspects Claude's reply or blocks it. This puts a step where there
-wasn't one, and whether the step changes anything is visible to you and not to
-us — you'll know it's working if a reply ever changes because of something you
-said three messages ago.
+Nothing inspects Claude's reply or blocks it. This plugin simply puts a reflection and theory of mind step into Claude's process. How far that improves interaction is an open question.
 
 ## Install
 
