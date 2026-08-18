@@ -11,21 +11,21 @@ just got interested in, a confident answer to a question you didn't ask.
 This puts something in the gap.
 
 ```mermaid
-flowchart TD
-    M["your message"] --> W
+flowchart LR
+    M["your<br/>message"] --> W
 
     subgraph CR["Claude's room — none of this reaches you"]
-        direction TB
-        W["works, drafts a reply"]
-        F["the orientation file<br/>what it has understood about you"]
-        D{"the door<br/>is this what they asked for?"}
-        W -->|"writes to it as it learns"| F
-        W -->|"draft in hand"| D
-        F -->|"read here, and nowhere else"| D
-        D -->|"and updated when the read<br/>changes what it understands"| F
+        direction LR
+        W["works,<br/>drafts a reply"]
+        F["the orientation file<br/>its read on you"]
+        D{"the door<br/>is this what<br/>they asked for?"}
+        W -->|"writes"| F
+        F -->|"read here"| D
+        D -->|"revised"| F
+        W -->|"draft"| D
     end
 
-    D -->|"goes in"| R["the reply — the only thing<br/>that crosses into your room"]
+    D -->|"goes in"| R["the<br/>reply"]
 
     style F fill:#e8e3f5,stroke:#6b5b95,color:#1a1a1a
     style D fill:#e0a544,stroke:#8a5a00,color:#1a1a1a
@@ -34,8 +34,8 @@ flowchart TD
 
 The file is written throughout the turn and read at one moment — the door,
 immediately before Claude speaks. The door is a decision, not a formality:
-what comes back can change the reply, or change the file. Neither the file nor
-the working ever crosses into your room.
+what comes back can change the reply, or change the file. Only the reply
+crosses.
 
 ## What it does
 
