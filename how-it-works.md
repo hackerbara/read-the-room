@@ -104,26 +104,13 @@ long enough to prune.
 
 ## What you see, and what Claude sees
 
-```mermaid
-flowchart LR
-    subgraph ITS["Claude's room"]
-        direction TB
-        W["draft and working notes<br/>(full text, kept)"]
-        N["the orientation file"]
-        R1["the reply"]
-    end
-    subgraph YOURS["Your room"]
-        direction TB
-        P["the marker<br/>⋯ working notes — 12 lines · press ctrl+O to expand"]
-        R2["the reply"]
-    end
-    W -.->|"hidden from you"| P
-    N -.->|"never shown"| P
-    R1 ==>|"shown in full"| R2
+Three things exist on Claude's side of a turn. Only one of them arrives whole.
 
-    style R1 fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
-    style R2 fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
-```
+| Claude produces | reaches your screen as |
+|---|---|
+| **working notes** — the draft, the thinking, the discarded attempts | one line: `⋯ working notes — 12 lines · press ctrl+O to expand` |
+| **the orientation file** — its running read on you | nothing at all; it is never displayed |
+| **the reply** | the reply, in full |
 
 `ctrl+O` is Claude Code's toggle for showing everything in the conversation.
 Nothing is deleted — hidden text stays in the transcript and that toggle opens
