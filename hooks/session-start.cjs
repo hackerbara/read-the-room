@@ -106,6 +106,7 @@ function run(raw) {
 ## This session's files
 
 - orientation file: \`${orientFile}\`
+- full orientation document: \`${fullDoc}\`
 
 The workspace is not a file. It is the text you write in the turn, before
 calling \`read_the_room\`.

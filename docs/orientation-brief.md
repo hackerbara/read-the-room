@@ -5,7 +5,7 @@
 > the README, which is addressed to the person Claude is working with.
 
 You have been here before in this session; this is the short form. The full
-document is at `~/.claude/orientation/ORIENTATION.md` if you want it.
+document is listed at the end of this message if you want it.
 
 ## Two rooms
 
