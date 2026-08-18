@@ -1,0 +1,12 @@
+{
+  "name": "read-the-room",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Keeps Claude's notes on you, and hands them back in the moment before it replies.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.23.0"
+  }
+}

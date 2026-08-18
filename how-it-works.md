@@ -1,0 +1,215 @@
+# How it works
+
+The mechanism. If you haven't read the [README](README.md), start there — it
+sets up the two rooms and the orientation file that this depends on.
+
+---
+
+## The one-sentence version
+
+**Claude writes its reply, then reads its orientation file, and only then
+speaks.**
+
+---
+
+## The door
+
+There is one moment where Claude crosses from its room into yours: the moment
+it speaks. Read the Room puts a door there.
+
+Going through the door means calling a tool, `read_the_room`. It is permission
+to speak, not a test to pass — nothing reads what Claude wrote, judges it, or
+blocks it. What the door does is hand back the orientation file at the one
+moment it can still change the reply.
+
+---
+
+## A turn, start to finish
+
+```mermaid
+flowchart TD
+    A["You send a message"] --> B["The door shuts<br/>(automatic, every turn)"]
+    B --> C["Claude works<br/>reads files, runs searches"]
+    C --> D["Claude drafts a reply"]
+    D --> E{"Hiding turned on,<br/>and the text is long?"}
+    E -->|"yes"| F["You see the marker<br/>text stays in the transcript"]
+    E -->|"no"| G["You see it as normal"]
+    F --> H["THROUGH THE DOOR<br/>read_the_room"]
+    G --> H
+    H --> I["The orientation file<br/>comes back"]
+    I --> J{"Claude judges:<br/>does the draft still fit?"}
+    J -->|"no"| C
+    J -->|"yes"| K["Claude speaks"]
+    K --> L["You see the reply"]
+    L --> M["The door shuts again"]
+    M --> C
+
+    style H fill:#e0a544,stroke:#8a5a00,color:#1a1a1a
+    style I fill:#fff3d6,stroke:#e0a544,color:#1a1a1a
+    style J stroke-dasharray: 5 5
+    style L fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
+```
+
+The dashed box is the only step nothing enforces. Every other box is machinery;
+that one is Claude's own judgement, and it can go either way.
+
+The file arrives after the draft exists and before it is delivered — late
+enough to change it, early enough that changing it costs nothing but tokens.
+
+---
+
+## One crossing, one reply
+
+The door shuts again the moment something is delivered.
+
+If Claude keeps working afterwards and writes more, that text is its own again:
+kept in the transcript, not put in front of you. To say a second thing, it has
+to come back through the door.
+
+When a turn ends with text written after Claude already spoke, it gets told so
+and asked whether that was meant for you. That only fires for text over about
+400 characters — a short trailing line goes unremarked.
+
+---
+
+## What comes back through the door
+
+The orientation file. Claude writes and maintains it; nothing else does. It
+holds what Claude understands about where you're standing:
+
+```
+## What they're working on
+Migrating the billing service off the legacy queue. Week three.
+
+## What they asked for
+A list of every consumer still reading from the old topic.
+NOT a migration plan — they said twice they'll sequence it themselves.
+
+## Their words
+"the old topic" = billing-events-v1. "cutover" means DNS, not data.
+
+## What they've already settled
+Kafka stays. Don't reopen it.
+
+## What I don't know
+Whether the staging consumers count.
+```
+
+Along with two facts that are always included — how many turns since the file
+last changed, and how much Claude wrote to itself this turn — and one that
+appears only past about 6,000 characters, telling Claude the file has grown
+long enough to prune.
+
+---
+
+## What you see, and what Claude sees
+
+With hiding turned on:
+
+```mermaid
+flowchart LR
+    subgraph ITS["Claude's room"]
+        direction TB
+        W["draft and working notes<br/>(full text, kept)"]
+        N["the orientation file"]
+        R1["the reply"]
+    end
+    subgraph YOURS["Your room"]
+        direction TB
+        P["the marker<br/>⋯ working notes — 12 lines · press ctrl+O to expand"]
+        R2["the reply"]
+    end
+    W -.->|"hidden from you"| P
+    N -.->|"never shown"| P
+    R1 ==>|"shown in full"| R2
+
+    style R1 fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
+    style R2 fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
+```
+
+`ctrl+O` is Claude Code's toggle for showing everything in the conversation.
+Nothing is deleted — hidden text stays in the transcript and that toggle opens
+it. The hiding is display-only; Claude still sees everything it wrote.
+
+The orientation file is never shown to you at either setting. You can read it
+if you want — it's a file on disk — but it's written for Claude.
+
+---
+
+## If Claude doesn't go through the door
+
+```mermaid
+flowchart TD
+    A["Turn ends"] --> B{"Did it go through?"}
+    B -->|"yes"| C["Nothing happens"]
+    B -->|"no"| D["A one-line note:<br/>go through the door, then reply"]
+    D --> E["The turn runs again<br/>— a second generation, at full cost"]
+    E --> F{"Skipped twice<br/>in a row?"}
+    F -->|"yes"| G["Stop hiding anything.<br/>Something is broken —<br/>better noisy than silent"]
+
+    style E fill:#fdf0d5,stroke:#b58900,color:#1a1a1a
+    style G fill:#f5ded9,stroke:#b5564c,color:#1a1a1a
+```
+
+The note points at the door and does not include the file itself, so skipping
+the door still costs something.
+
+Re-running the turn is a real second generation — tokens and latency. It
+happens at most twice by default before the machinery stands down.
+
+The last box is the failure posture: if the tool breaks, you must never be left
+unable to see Claude. It fails toward showing you too much.
+
+---
+
+## What it costs
+
+Per turn: one extra tool call, and a handful of small file reads and writes.
+
+If Claude forgets the door: up to two extra generations of the whole turn.
+
+On disk: about a dozen small state files per session in your system temp
+directory, under `claude-orientation/`. They are not cleaned up automatically.
+Your operating system's temp sweep is what eventually removes them.
+
+---
+
+## What it doesn't do
+
+- **It doesn't check the reply.** Nothing reads what Claude wrote and judges it.
+- **Nothing forces the door.** The tool call is easy to make and then ignore,
+  and there is no way to tell from the outside whether the file changed
+  anything.
+- **It doesn't make replies shorter.**
+- **It isn't memory.** The orientation file is per-session. A new session
+  starts with a blank one.
+
+---
+
+## The documents you can edit
+
+Two documents tell Claude how to keep the orientation file: `orientation.md`,
+the full version, and `orientation-brief.md`, a short form used after a
+compaction. They ship as templates and are copied on first run into a directory
+that survives plugin updates, so your edits are never overwritten.
+
+They are written in the second person, addressed to Claude. **"Your room" in
+those documents means Claude's room** — the opposite of what it means here.
+
+---
+
+## Configuration
+
+One variable is worth knowing:
+
+```sh
+export CLAUDE_ORIENTATION_SUPPRESS=1   # turn on hiding of working notes
+```
+
+Several others exist for tuning thresholds — the length at which text gets
+hidden, how many turns before a staleness nudge, and a kill switch,
+`CLAUDE_ORIENTATION_STOP=0`, that disables the backstop entirely. They are
+named in the hook sources and none are required.
+
+"Orientation" is this project's older internal name. It survives in the
+environment variables, the state directory, and the document filenames.

@@ -1,0 +1,15 @@
+{
+  "name": "read-the-room",
+  "description": "Read the Room — keeps coding agents' notes on the people they work with, ready before they reply.",
+  "owner": {
+    "name": "Hackerbara"
+  },
+  "plugins": [
+    {
+      "name": "read-the-room",
+      "source": "./",
+      "description": "Keeps Claude's notes on you, and hands them back in the moment before it replies.",
+      "strict": false
+    }
+  ]
+}
