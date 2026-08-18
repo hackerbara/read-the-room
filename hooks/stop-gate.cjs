@@ -121,7 +121,7 @@ them? Either way, the room is probably worth a one-line update.`;
   if (!orientStat || orientStat.size === 0) { stamp('CLOSED'); return; }
 
   // MIN_CHARS: skip the nudge when the reply was shorter than N chars (0 = off).
-  const minChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MIN_CHARS, '0'), 10);
+  const minChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MIN_CHARS, '180'), 10);
   if (minChars > 0) {
     const last = stripTrailingNL(jqStr(input.last_assistant_message, ''));
     if (Array.from(last).length < minChars) { stamp('CLOSED'); return; }

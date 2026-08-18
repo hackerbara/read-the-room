@@ -196,8 +196,12 @@ turned off:
 export CLAUDE_ORIENTATION_SUPPRESS=0   # show working notes instead of hiding them
 ```
 
-Several others exist for tuning thresholds — the length at which text gets
-hidden, how many turns before a staleness nudge, and a kill switch,
+Replies under 180 characters are exempt from the missed-door nudge — a
+one-line answer does not owe a crossing. `CLAUDE_ORIENTATION_STOP_MIN_CHARS`
+changes that threshold; 0 removes the exemption.
+
+Several others exist for tuning — the length at which text gets hidden, how
+many turns before a staleness nudge, and a kill switch,
 `CLAUDE_ORIENTATION_STOP=0`, that disables the backstop entirely. They are
 named in the hook sources and none are required.
 
