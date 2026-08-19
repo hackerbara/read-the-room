@@ -27,6 +27,14 @@ function stripTrailingNL(s) {
 
 function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
+function readTokens(content, n) {
+  const line = (content || '').split(/\r?\n/)[0] || '';
+  const parts = line.trim().split(/\s+/).filter(Boolean);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(parts[i] || '');
+  return out;
+}
+
 function splitSections(text) {
   const out = []; let cur = null;
   for (const line of text.split('\n')) {
@@ -173,6 +181,24 @@ you go.
 \`\`\`
 ${live}
 \`\`\`
+`;
+    }
+  }
+
+  // Compaction can strand a same-turn key: the nonce itself still lives in
+  // `<sid>.key` and comes back via a bare door re-call (spec §6/§7), but a
+  // freshly-compacted context has no way to know one is outstanding unless
+  // this says so. Content-blind, like the rest of the door: existence and
+  // turn-currency only, never what the key's reasons are about.
+  if (source === 'compact') {
+    let keyTurn = '';
+    try { [, keyTurn] = readTokens(fs.readFileSync(path.join(base, `${sessionId}.key`), 'utf8'), 2); } catch {}
+    let curTurn = '';
+    try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
+    if (keyTurn && curTurn && keyTurn === curTurn) {
+      context = `${context}
+This session has an outstanding upkeep key from before the compaction — a
+bare \`read_the_room\` call re-presents it.
 `;
     }
   }

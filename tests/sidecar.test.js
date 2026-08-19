@@ -95,3 +95,27 @@ test("an interrupted KEYED turn stamps .interrupted", () => {
   promptTurn(temp, sid);                                   // turn 2 arrives
   assert.equal(readFileSync(join(base, `${sid}.interrupted`), "utf8"), "1");
 });
+
+test("SessionStart(compact) notes an outstanding same-turn key; a stale-turn key gets no note", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "rtr-compact-key-"));
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+  const temp = join(sandbox, "tmp");
+  const sid = "compact-key-session";
+  runHook("session-start.cjs", { temp, sessionId: sid });
+  const base = join(temp, "claude-orientation");
+  writeFileSync(join(base, `${sid}.turns`), "3");
+
+  // A key issued this same turn: the restored context should note it.
+  writeFileSync(join(base, `${sid}.key`), "nonce1 3 0\nsetup deadbeef\n");
+  const current = runHook("session-start.cjs", { temp, sessionId: sid, source: "compact" });
+  assert.equal(current.status, 0, current.stderr);
+  const currentCtx = JSON.parse(current.stdout).hookSpecificOutput.additionalContext;
+  assert.match(currentCtx, /outstanding upkeep key/);
+
+  // A key left over from an earlier turn: no note — turn-currency only.
+  writeFileSync(join(base, `${sid}.key`), "nonce2 2 0\nsetup deadbeef\n");
+  const stale = runHook("session-start.cjs", { temp, sessionId: sid, source: "compact" });
+  assert.equal(stale.status, 0, stale.stderr);
+  const staleCtx = JSON.parse(stale.stdout).hookSpecificOutput.additionalContext;
+  assert.ok(!staleCtx.includes("outstanding upkeep key"));
+});
