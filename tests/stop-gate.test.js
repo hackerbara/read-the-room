@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -225,3 +225,48 @@ test("Claude continuation output and keyed state remain unchanged", () => {
   assert.equal(readFileSync(join(base, "s1.suppressed"), "utf8"), "1");
   assert.equal(existsSync(join(base, "s1.codex-reruns")), false);
 });
+
+for (const status of ["CLOSED", "KEYED", "STAYED"]) {
+  test(`Codex ${status} fails open when its rerun counter cannot persist`, () => {
+    const files = status === "KEYED"
+      ? { "s1.key": "abc123 5 0\nsetup 0000\n" }
+      : status === "STAYED" ? { "s1.staystreak": "3" } : {};
+    const state = seed(status, files);
+    mkdirSync(join(state.base, "s1.codex-reruns"));
+    test.after(() => rmSync(state.sandbox, { recursive: true, force: true }));
+
+    const first = stop(state.temp, "s1", "x".repeat(101), {}, "false", "codex");
+    assert.equal(first.stdout, "", status);
+    const second = stop(state.temp, "s1", "x".repeat(101), {}, "false", "codex");
+    assert.equal(second.stdout, "", `${status} rerun`);
+
+    if (status === "KEYED") {
+      assert.equal(existsSync(join(state.base, "s1.ledger")), false);
+    }
+    if (status === "STAYED") {
+      assert.equal(readFileSync(join(state.base, "s1.staystreak"), "utf8"), "4");
+    }
+  });
+}
+
+for (const status of ["CLOSED", "KEYED", "STAYED"]) {
+  test(`Codex ${status} continuation requires a durable stopped gate`, () => {
+    const files = status === "KEYED"
+      ? { "s1.key": "abc123 5 0\nsetup 0000\n" }
+      : status === "STAYED" ? { "s1.staystreak": "3" } : {};
+    const state = seed(status, files);
+    const gate = join(state.base, "s1.gate");
+    chmodSync(gate, 0o444);
+    test.after(() => rmSync(state.sandbox, { recursive: true, force: true }));
+
+    const result = stop(state.temp, "s1", "x".repeat(101), {}, "false", "codex");
+    assert.equal(result.stdout, "", status);
+    assert.equal(readFileSync(gate, "utf8"), `${status} 5`);
+    if (status === "KEYED") {
+      assert.equal(existsSync(join(state.base, "s1.ledger")), false);
+    }
+    if (status === "STAYED") {
+      assert.equal(readFileSync(join(state.base, "s1.staystreak"), "utf8"), "3");
+    }
+  });
+}

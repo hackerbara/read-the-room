@@ -75,7 +75,7 @@ function incrementCodexReruns(file, turn) {
     count = recordedTurn === turn && /^[0-9]+$/.test(count) ? parseInt(count, 10) : 0;
   } catch { count = 0; }
   count += 1;
-  try { fs.writeFileSync(file, `${turn} ${count}`); } catch {}
+  try { fs.writeFileSync(file, `${turn} ${count}`); } catch { return null; }
   return count;
 }
 
@@ -116,7 +116,9 @@ function run(raw) {
   try { [status, turn, flag] = readTokens(fs.readFileSync(gateFile, 'utf8'), 3); } catch {}
 
   // Marks the turn as ended (not interrupted), for the next UserPromptSubmit.
-  const stamp = (s) => { try { fs.writeFileSync(gateFile, `${s} ${turn || '0'} stopped`); } catch {} };
+  const stamp = (s) => {
+    try { fs.writeFileSync(gateFile, `${s} ${turn || '0'} stopped`); return true; } catch { return false; }
+  };
 
   // Gate OPEN: the door was called. Reset the suppressed counter. Checked
   // before stop_hook_active so a re-run that calls the door still clears it.
@@ -164,7 +166,8 @@ them? Either way, the room is probably worth a one-line update.`;
   // Increments the consecutive-stay streak; past STAY_CAP, the ordinary
   // come-through nudge fires (waiting is legal, but not forever silent).
   if (status === 'STAYED') {
-    stamp('STAYED');
+    const stamped = stamp('STAYED');
+    if (host === 'codex' && !stamped) return;
     // The harness re-runs the turn after this hook injects context, with
     // stop_hook_active true — same guard as KEYED/CLOSED. Without it, a
     // real capped stay would re-read-increment-write the streak twice per
@@ -181,6 +184,7 @@ them? Either way, the room is probably worth a one-line update.`;
     if (stayCap > 0 && streak > stayCap) {
       if (host === 'codex') {
         const count = incrementCodexReruns(codexRerunsFile, turn || '0');
+        if (count === null) return;
         const max = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
         if (max > 0 && count > max) return;
       }
@@ -197,6 +201,7 @@ them? Either way, the room is probably worth a one-line update.`;
   if (status === 'KEYED') {
     const stopActive = host === 'claude' && jqStr(input.stop_hook_active, 'false') === 'true';
     if (stopActive) return;
+    if (host === 'codex' && !stamp('KEYED')) return;
 
     let curTurn = '';
     try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
@@ -213,6 +218,7 @@ them? Either way, the room is probably worth a one-line update.`;
       try { fs.writeFileSync(suppressedFile, String(continuationCount)); } catch {}
     } else {
       continuationCount = incrementCodexReruns(codexRerunsFile, turn || '0');
+      if (continuationCount === null) return;
     }
 
     // Past STOP_MAX_RERUNS, stand down: stamp the gate (for interrupt
@@ -230,7 +236,7 @@ them? Either way, the room is probably worth a one-line update.`;
 Outstanding: ${reasons.map(displayReason).join(' · ') || 'unknown'}
 Call read_the_room again: a bare call re-presents the key (not a fumble). Update or affirm what it names, return the key, then reply.`;
 
-    stamp('KEYED');
+    if (host === 'claude') stamp('KEYED');
 
     // jq -c always appends a trailing newline.
     emitContinuation(host, ctx);
@@ -267,6 +273,8 @@ Call read_the_room again: a bare call re-presents the key (not a fumble). Update
     if (Array.from(last).length < minChars) { stamp('CLOSED'); return; }
   }
 
+  if (host === 'codex' && !stamp('CLOSED')) return;
+
   // Consecutive closed-gate turns. Read by message-display.js, which stops
   // suppressing at 2.
   let continuationCount = 0;
@@ -279,6 +287,7 @@ Call read_the_room again: a bare call re-presents the key (not a fumble). Update
     try { fs.writeFileSync(suppressedFile, String(continuationCount)); } catch {}
   } else {
     continuationCount = incrementCodexReruns(codexRerunsFile, turn || '0');
+    if (continuationCount === null) return;
   }
 
   // Past STOP_MAX_RERUNS, stand down: stamp the gate (for interrupt
@@ -319,7 +328,7 @@ ${backstopLine}
 
 Go through the door, then reply.`;
 
-  stamp('CLOSED');
+  if (host === 'claude') stamp('CLOSED');
 
   // jq -c always appends a trailing newline.
   emitContinuation(host, ctx);
