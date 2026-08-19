@@ -93,6 +93,13 @@ orientation file is Claude's read on you, and that's what corrects it.
 [How it works](how-it-works.md) — the mechanism, with diagrams, and what it
 costs.
 
+The thinking behind the design owes a debt to Trivedi, Jaques, Cross,
+Vezhnevets & Leibo, ["Solipsistic Superintelligence is Unlikely to be
+Cooperative"](https://arxiv.org/abs/2606.03237): AI that treats the world
+as an exogenous and stationary source of feedback fails among adaptive
+actors. This plugin is a session-scale response to that observation — one
+small machine for remembering that the person moves.
+
 ## Licence
 
 MIT.
