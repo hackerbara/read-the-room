@@ -20,6 +20,28 @@ function digitsOrDefault(v, def) {
   return v;
 }
 
+function appendLedger(base, sessionId, turn, event, delta, reason) {
+  try { fs.appendFileSync(path.join(base, `${sessionId}.ledger`),
+    `${turn} ${event} ${delta || '-'} ${reason || ''}\n`.replace(/ +\n$/, '\n')); } catch {}
+}
+
+// Strips the baseline token (hash/byte count recorded at issue time) from
+// each .key reason line for display, leaving readable copy — the raw line
+// on disk is untouched. `fresh <hash> <header>` -> `fresh: <header>`;
+// `prune <bytes>` -> `prune: <bytes> bytes`; `setup <hash>` -> `setup`.
+function readKeyReasons(p) {
+  try {
+    return fs.readFileSync(p, 'utf8').split('\n').slice(1).filter(Boolean).map(line => {
+      const parts = line.split(' ');
+      const kind = parts[0];
+      if (kind === 'fresh') return `fresh: ${parts.slice(2).join(' ')}`;
+      if (kind === 'prune') return `prune: ${parts[1]} bytes`;
+      if (kind === 'setup') return 'setup';
+      return line;
+    });
+  } catch { return []; }
+}
+
 function readTokens(content, n) {
   const line = (content || '').split(/\r?\n/)[0] || '';
   const parts = line.trim().split(/\s+/).filter(Boolean);
@@ -69,6 +91,7 @@ function run(raw) {
   // before stop_hook_active so a re-run that calls the door still clears it.
   if (status === 'OPEN') {
     try { fs.writeFileSync(suppressedFile, '0'); } catch {}
+    try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), '0'); } catch {}
     stamp('OPEN');
     return;
   }
@@ -77,6 +100,7 @@ function run(raw) {
   // one-shot signal if text was hidden after the reply went out.
   if (status === 'SPOKEN') {
     try { fs.writeFileSync(suppressedFile, '0'); } catch {}
+    try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), '0'); } catch {}
     stamp('SPOKEN');
     const aftertalkFile = path.join(base, `${sessionId}.aftertalk`);
     let aftertalk = '';
@@ -96,6 +120,64 @@ them? Either way, the room is probably worth a one-line update.`;
         hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
       }) + '\n');
     }
+    return;
+  }
+
+  // Gate STAYED: the door was called with `stay` — a legal, quiet end.
+  // Increments the consecutive-stay streak; past STAY_CAP, the ordinary
+  // come-through nudge fires (waiting is legal, but not forever silent).
+  if (status === 'STAYED') {
+    stamp('STAYED');
+    let streak = 0;
+    try { streak = parseInt(fs.readFileSync(path.join(base, `${sessionId}.staystreak`), 'utf8').replace(/[^0-9]/g, ''), 10) || 0; } catch {}
+    streak += 1;
+    try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), String(streak)); } catch {}
+    const stayCap = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STAY_CAP, '3'), 10);
+    const rerun = jqStr(input.stop_hook_active, 'false') === 'true';
+    if (!rerun && stayCap > 0 && streak > stayCap) {
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop',
+        additionalContext: `You have stayed in for ${streak} consecutive turns. Staying is legal and counted, but the person has heard nothing in all that time. Either go through the door with something for them, or tell them plainly you are holding and why.` } }) + '\n');
+    }
+    return;
+  }
+
+  // Gate KEYED: a key was issued and the turn ended without returning it —
+  // an illegal end, like CLOSED, but the MIN_CHARS trivial-reply exemption
+  // does not apply (a short reply must not silently void a due key).
+  if (status === 'KEYED') {
+    const stopActive = jqStr(input.stop_hook_active, 'false') === 'true';
+    if (stopActive) return;
+
+    let curTurn = '';
+    try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
+
+    // Consecutive closed/keyed-gate turns. Read by message-display.js, which
+    // stops suppressing at 2.
+    let suppressed = 0;
+    try {
+      const digits = fs.readFileSync(suppressedFile, 'utf8').replace(/[^0-9]/g, '');
+      suppressed = digits ? parseInt(digits, 10) : 0;
+    } catch { suppressed = 0; }
+    suppressed += 1;
+    try { fs.writeFileSync(suppressedFile, String(suppressed)); } catch {}
+
+    // Past STOP_MAX_RERUNS, stand down: stamp the gate (for interrupt
+    // detection) and stop re-running.
+    const stopMaxReruns = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
+    if (stopMaxReruns > 0 && suppressed > stopMaxReruns) { stamp('KEYED'); return; }
+
+    const reasons = readKeyReasons(path.join(base, `${sessionId}.key`));
+    appendLedger(base, sessionId, curTurn, 'lapsed', null, reasons.join('; '));
+    const ctx = `A key was issued and not returned — the door asked for upkeep before entry and the turn is ending without it.
+Outstanding: ${reasons.join(' · ') || 'unknown'}
+Call read_the_room again: a bare call re-presents the key (not a fumble). Update or affirm what it names, return the key, then reply.`;
+
+    stamp('KEYED');
+
+    // jq -c always appends a trailing newline.
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
+    }) + '\n');
     return;
   }
 
@@ -121,7 +203,7 @@ them? Either way, the room is probably worth a one-line update.`;
   if (!orientStat || orientStat.size === 0) { stamp('CLOSED'); return; }
 
   // MIN_CHARS: skip the nudge when the reply was shorter than N chars (0 = off).
-  const minChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MIN_CHARS, '180'), 10);
+  const minChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MIN_CHARS, '100'), 10);
   if (minChars > 0) {
     const last = stripTrailingNL(jqStr(input.last_assistant_message, ''));
     if (Array.from(last).length < minChars) { stamp('CLOSED'); return; }
