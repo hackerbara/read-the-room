@@ -25,21 +25,24 @@ function appendLedger(base, sessionId, turn, event, delta, reason) {
     `${turn} ${event} ${delta || '-'} ${reason || ''}\n`.replace(/ +\n$/, '\n')); } catch {}
 }
 
-// Strips the baseline token (hash/byte count recorded at issue time) from
-// each .key reason line for display, leaving readable copy — the raw line
-// on disk is untouched. `fresh <hash> <header>` -> `fresh: <header>`;
-// `prune <bytes>` -> `prune: <bytes> bytes`; `setup <hash>` -> `setup`.
+// Reads .key lines 2+ verbatim — raw reason lines, baseline tokens intact.
+// This is what the ledger records: the durable audit trail (spec §5) keeps
+// the baseline (hash/byte count at issue) on the record.
 function readKeyReasons(p) {
-  try {
-    return fs.readFileSync(p, 'utf8').split('\n').slice(1).filter(Boolean).map(line => {
-      const parts = line.split(' ');
-      const kind = parts[0];
-      if (kind === 'fresh') return `fresh: ${parts.slice(2).join(' ')}`;
-      if (kind === 'prune') return `prune: ${parts[1]} bytes`;
-      if (kind === 'setup') return 'setup';
-      return line;
-    });
-  } catch { return []; }
+  try { return fs.readFileSync(p, 'utf8').split('\n').slice(1).filter(Boolean); } catch { return []; }
+}
+
+// Strips the baseline token from a raw .key reason line, for nudge display
+// copy ONLY — the ledger and the file on disk keep the raw form untouched.
+// `fresh <hash> <header>` -> `fresh: <header>`; `prune <bytes>` ->
+// `prune: <bytes> bytes`; `setup <hash>` -> `setup`.
+function displayReason(line) {
+  const parts = line.split(' ');
+  const kind = parts[0];
+  if (kind === 'fresh') return `fresh: ${parts.slice(2).join(' ')}`;
+  if (kind === 'prune') return `prune: ${parts[1]} bytes`;
+  if (kind === 'setup') return 'setup';
+  return line;
 }
 
 function readTokens(content, n) {
@@ -128,13 +131,18 @@ them? Either way, the room is probably worth a one-line update.`;
   // come-through nudge fires (waiting is legal, but not forever silent).
   if (status === 'STAYED') {
     stamp('STAYED');
+    // The harness re-runs the turn after this hook injects context, with
+    // stop_hook_active true — same guard as KEYED/CLOSED. Without it, a
+    // real capped stay would re-read-increment-write the streak twice per
+    // turn (once per run), inflating it by 2 instead of 1.
+    const rerun = jqStr(input.stop_hook_active, 'false') === 'true';
+    if (rerun) return;
     let streak = 0;
     try { streak = parseInt(fs.readFileSync(path.join(base, `${sessionId}.staystreak`), 'utf8').replace(/[^0-9]/g, ''), 10) || 0; } catch {}
     streak += 1;
     try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), String(streak)); } catch {}
     const stayCap = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STAY_CAP, '3'), 10);
-    const rerun = jqStr(input.stop_hook_active, 'false') === 'true';
-    if (!rerun && stayCap > 0 && streak > stayCap) {
+    if (stayCap > 0 && streak > stayCap) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop',
         additionalContext: `You have stayed in for ${streak} consecutive turns. Staying is legal and counted, but the person has heard nothing in all that time. Either go through the door with something for them, or tell them plainly you are holding and why.` } }) + '\n');
     }
@@ -166,10 +174,12 @@ them? Either way, the room is probably worth a one-line update.`;
     const stopMaxReruns = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
     if (stopMaxReruns > 0 && suppressed > stopMaxReruns) { stamp('KEYED'); return; }
 
+    // Raw reasons (baseline tokens intact) go to the ledger — the durable
+    // audit trail. Display copy strips the baseline (displayReason above).
     const reasons = readKeyReasons(path.join(base, `${sessionId}.key`));
     appendLedger(base, sessionId, curTurn, 'lapsed', null, reasons.join('; '));
     const ctx = `A key was issued and not returned — the door asked for upkeep before entry and the turn is ending without it.
-Outstanding: ${reasons.join(' · ') || 'unknown'}
+Outstanding: ${reasons.map(displayReason).join(' · ') || 'unknown'}
 Call read_the_room again: a bare call re-presents the key (not a fumble). Update or affirm what it names, return the key, then reply.`;
 
     stamp('KEYED');
