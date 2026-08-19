@@ -123,6 +123,21 @@ function run(raw) {
     }
   } catch {}
 
+  // v2: crash-cover sweep — removes any session's state files older than 14
+  // days (mtime), for sessions whose SessionEnd hook never fired (kill -9,
+  // spec §13/§14). Sibling to the msg/ sweep above; files only, so msg/
+  // itself (a directory) is left for its own sweep to handle.
+  try {
+    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+    for (const name of fs.readdirSync(base)) {
+      const p = path.join(base, name);
+      try {
+        const st = fs.statSync(p);
+        if (st.isFile() && st.mtimeMs < cutoff) fs.unlinkSync(p);
+      } catch {}
+    }
+  } catch {}
+
   if (!fs.existsSync(orientFile)) return;
 
   let count = 0;
