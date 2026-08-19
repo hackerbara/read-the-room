@@ -10,7 +10,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "build": "esbuild server/index.js --bundle --platform=node --format=esm --outfile=dist/read-the-room-server.js"
+    "build": "esbuild server/index.js --bundle --platform=node --format=esm --outfile=dist/read-the-room-server.js",
+    "verify:codex-install": "node scripts/verify-codex-install.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

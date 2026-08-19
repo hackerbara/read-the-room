@@ -51,6 +51,11 @@ reach — immediately before speaking, when it can still change what gets said.
 text stays in the transcript and `ctrl+O` opens it. Set
 `CLAUDE_ORIENTATION_SUPPRESS=0` to see everything instead.
 
+That display behavior is specific to Claude Code. In Codex, workspace output
+remains visible while the turn is active. When Codex runs inside BB, BB may
+subsequently group that already-visible output into its native work
+presentation; that is client presentation, not hiding by this plugin.
+
 **Sometimes asks for upkeep before the door opens.** When the file has sat
 untouched too long, grown past its budget, or is still the blank template,
 the door hands Claude a key: bring the file current, then come back in. The
@@ -62,23 +67,45 @@ goes on record.
 instead of a reply — deliberate, counted, and visible — for turns that are
 honest waiting rather than something worth saying.
 
+## Claude Code and Codex
+
+| Capability | Claude Code | Codex |
+|---|---|---|
+| Orientation file and keyed `read_the_room` door | yes | yes |
+| Session-start and missed-door backstop | yes | yes |
+| Pre-door workspace output hidden by Read the Room | yes | no |
+
+Both hosts use the same content-blind key, return, and stay mechanics. Codex
+does not inspect or judge the content of a Codex reply, hide workspace output,
+or claim that BB's later grouping came from the plugin.
+
 ## What it can't do
 
-Nothing inspects Claude's reply or blocks it. The key's checks are hashes
-and byte counts; nothing ever reads or judges what the file says. This
-plugin simply puts a reflection and theory of mind step into Claude's
-process. How far that improves interaction is an open question.
+Nothing inspects Claude's reply. The key's checks are hashes and byte counts;
+nothing ever reads or judges what the file says. A bounded Stop decision may
+delay completion as a backstop when a turn ends without crossing the door, but
+it asks for the door rather than rewriting the reply. This plugin simply puts
+a reflection and theory of mind step into the agent's process. How far that
+improves interaction is an open question.
 
 ## Install
 
-Needs Claude Code and **Node.js on your PATH**; everything here runs on it, and
-without it nothing runs and it fails quietly.
+Needs Claude Code or Codex, plus Node.js 18 or newer on your PATH. Everything
+here runs on it; without it nothing runs and it fails quietly.
 
 ```sh
 claude plugin marketplace add hackerbara/read-the-room && claude plugin install read-the-room@read-the-room
 ```
 
-Restart Claude Code. Nothing else to configure.
+For Codex:
+
+```sh
+codex plugin marketplace add hackerbara/read-the-room --ref main
+codex plugin add read-the-room@read-the-room
+```
+
+After the Codex install, review and trust the hooks, then start a new task.
+Restart Claude Code after its install. Nothing else to configure.
 
 ## Use
 

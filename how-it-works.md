@@ -75,11 +75,12 @@ and asked whether that was meant for you. That only fires for text past the
 hiding threshold — a short trailing line goes unremarked.
 
 A turn can also end without a reply at all. If Claude is waiting on
-something — a background agent, a long build — it can stay in its room, and
-you see one line: `■ stayed in this turn — <note> (nothing was said; ctrl+O
-for the workspace)`. Staying is legal and counted; past 3 consecutive stays
-the machinery asks it to either come through with something or tell you
-plainly that it is holding, and why.
+something — a background agent, a long build — it can stay in its room.
+Claude Code shows one line: `■ stayed in this turn — <note> (nothing was said;
+ctrl+O for the workspace)`. In Codex the workspace was already visible, and a
+stay produces no new addressed reply. Staying is legal and counted; past 3
+consecutive stays the machinery asks it to either come through with something
+or tell you plainly that it is holding, and why.
 
 ---
 
@@ -107,9 +108,9 @@ Whether the staging consumers count.
 ```
 
 Each section header comes back stamped with its own age — `(changed turn 41,
-9 ago)` — along with how much Claude wrote to itself this turn. The file's
-size appears only once it matters: past the pruning limit, as part of the
-key's reasons.
+9 ago)`. Claude Code additionally reports how much Claude wrote to itself this
+turn; Codex has no equivalent hidden-workspace count. The file's size appears
+only once it matters: past the pruning limit, as part of the key's reasons.
 
 The periodic staleness nudges that used to fire at turn counts are gone —
 the key replaced them, and their removal trims what gets injected into
@@ -144,7 +145,13 @@ speech is the rule everywhere — no key can leave you unable to hear Claude.
 
 ---
 
-## What you see, and what Claude sees
+## What you see, and what Claude Code sees
+
+The hiding described here is Claude Code behavior. In Codex, workspace output
+remains visible while the turn is active. When Codex runs inside BB, BB may
+subsequently group that already-visible output into its native work
+presentation. That is BB presentation, not hidden transcript transport or a
+requirement for Read the Room to work.
 
 Three things exist on Claude's side of a turn. Only one of them arrives whole.
 
