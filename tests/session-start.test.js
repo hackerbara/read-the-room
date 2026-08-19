@@ -14,6 +14,10 @@ const claudeDocumentDigests = {
   "orientation.md": "7e588fe0f37d2d4c0b8b5db097cdd124227378bd474a4c4548ea6368e653218a",
   "orientation-brief.md": "0e97f7646b0513fa486a99f3af6b3a1fd44d4fef2bee5d5642b16215f694714a",
 };
+const legacyBrief39d5f4c = readFileSync(
+  fileURLToPath(new URL("fixtures/orientation-brief.39d5f4c.md", import.meta.url)),
+  "utf8",
+);
 
 function sandbox(t) {
   const dir = mkdtempSync(join(tmpdir(), "read-the-room-test-"));
@@ -143,6 +147,23 @@ test("Codex omits markerless persisted document context and leaves it untouched"
   assert.doesNotMatch(output, /User-owned Codex orientation|Nobody has to receive it/);
   assert.match(output, /## This session's files/);
   assert.equal(readFileSync(join(box.pluginData, "orientation.md"), "utf8"), full);
+});
+
+test("Codex normalizes the known 39d5f4c persisted brief without overwriting it", (t) => {
+  const box = sandbox(t);
+  mkdirSync(box.pluginData, { recursive: true });
+  writeFileSync(join(box.pluginData, "orientation-brief.md"), legacyBrief39d5f4c);
+
+  const output = context(runSessionStart({
+    ...box,
+    sessionId: "codex-legacy-brief",
+    host: "codex",
+    source: "compact",
+  }));
+
+  assert.doesNotMatch(output, /The full\s+document is listed at the end of this message/i);
+  assert.equal(output.match(/You have been here before in this session/g)?.length, 1);
+  assert.equal(readFileSync(join(box.pluginData, "orientation-brief.md"), "utf8"), legacyBrief39d5f4c);
 });
 
 test("Codex fails open when a marked document has no channel fragment", (t) => {

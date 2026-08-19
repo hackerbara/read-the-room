@@ -128,6 +128,16 @@ function renderChannels(text, host, replacement = '') {
   return text.replace(pattern, () => replacements[index++][1]);
 }
 
+function normalizeCodexBrief(text) {
+  const marker = '<!-- read-the-room:channel:start -->';
+  const legacyPreamble = `You have been here before in this session; this is the short form. The full
+document is listed at the end of this message if you want it.
+
+`;
+  if (!text.startsWith(legacyPreamble + marker)) return text;
+  return text.slice(legacyPreamble.length);
+}
+
 function run(raw) {
   const host = hostFromArgs(process.argv.slice(2));
   const orientHome = path.join(os.homedir(), '.claude', 'orientation');
@@ -178,6 +188,7 @@ function run(raw) {
   try { sourceText = fs.readFileSync(text, 'utf8'); } catch {
     if (host === 'claude') return;
   }
+  if (host === 'codex' && text === briefDoc) sourceText = normalizeCodexBrief(sourceText);
   let replacement = '';
   if (host === 'codex') {
     const root = process.env.PLUGIN_ROOT;
