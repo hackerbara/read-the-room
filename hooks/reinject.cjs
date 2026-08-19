@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Orientation — UserPromptSubmit hook. Re-injects the orientation file when
-// it has gone stale, and maintains v2's session-pointer and gate-file state.
-// Ported from reinject.sh; see that file for design rationale.
+// Orientation — UserPromptSubmit hook. Maintains v2's session-pointer and
+// gate-file state, and the per-section sidecar (`.state`) every turn.
+// Ported from reinject.sh; see that file for design rationale. The 5-turn
+// nudge and 10+/repeat reinjection this hook used to emit are retired —
+// this hook now emits nothing on stdout.
 
 const fs = require('fs');
 const os = require('os');
@@ -15,17 +17,10 @@ function jqStr(v, fb) {
   return fb;
 }
 
-// Bash: `case "$V" in (''|*[!0-9]*) V=default ;; esac` — only some vars go
-// through this; NUDGE_AT/REINJECT_AT/REPEAT deliberately do not (see below).
+// Bash: `case "$V" in (''|*[!0-9]*) V=default ;; esac` — used by the msg-sweep.
 function digitsOrDefault(v, def) {
   if (v === undefined || v === '' || !/^[0-9]+$/.test(v)) return def;
   return v;
-}
-
-// Bash: `${VAR:-default}` — default applies when unset OR empty.
-function envOr(name, def) {
-  const v = process.env[name];
-  return v === undefined || v === '' ? def : v;
 }
 
 function readTokens(content, n) {
@@ -40,18 +35,10 @@ function writeSafe(p, c) {
   try { fs.writeFileSync(p, c); } catch {}
 }
 
-function sha256File(p) {
-  try { return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); }
-  catch { return ''; }
-}
-
 // jq -c always appends a trailing newline; bash `$(...)` capture always
 // strips trailing newlines from what it captures. Both are reproduced by hand.
 function emitJson(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
-}
-function stripTrailingNL(s) {
-  return s.replace(/\n+$/, '');
 }
 
 // Duplicated from session-start.cjs — same shapes, per codebase convention.
