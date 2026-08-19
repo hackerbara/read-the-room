@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +25,7 @@ const compatibilitySpec = read("docs/superpowers/specs/2026-08-18-codex-compatib
   assert.equal(codexManifest.version, "1.1.0");
   assert.equal(packageJson.engines.node, ">=18");
   assert.equal(packageLock.packages[""].engines.node, ">=18");
+  assert.equal(packageJson.scripts["verify:node18"], "node scripts/verify-node18.mjs");
 });
 
 test("README documents Codex installation, trust, and visible workspace truthfully", () => {
@@ -42,7 +44,21 @@ test("host qualification preserves the keyed and stay explanations", () => {
   assert.match(howItWorks, /BB.*group.*native.*work\s+presentation/is);
   assert.match(howItWorks, /## The key/);
   assert.match(howItWorks, /A turn can also end without a reply at all/);
+  assert.match(readme, /Claude Code shows.*one-line marker/is);
+  assert.match(readme, /Codex.*already-visible workspace.*no new addressed reply/is);
   assert.doesNotMatch(compatibilitySpec, /\/Users\/MAC\//);
+});
+
+test("tracked release text contains no local paths or captured session identifiers", () => {
+  const listed = spawnSync("git", ["ls-files", "-z"], { cwd: root, encoding: "buffer" });
+  assert.equal(listed.status, 0, listed.stderr?.toString());
+  const files = listed.stdout.toString("utf8").split("\0").filter(Boolean);
+  const textFiles = files.filter((path) => /(?:^|\/)(?:[^/]+\.(?:md|json|js|mjs|cjs|txt)|README|LICENSE)$/.test(path));
+  for (const path of textFiles) {
+    const content = read(path);
+    assert.doesNotMatch(content, /\b(?:thr|ses|sess)_[A-Za-z0-9]{8,}\b/, `${path} contains a captured session identifier`);
+    assert.doesNotMatch(content, /(?:\/Users\/[^/\s]+|\/home\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/, `${path} contains a local absolute path`);
+  }
 });
 
 test("BB-RTR-001 stays a separate optional upstream conformance note", () => {

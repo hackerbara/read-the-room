@@ -23,6 +23,5 @@ turn's `Worked for` summary.
 separate upstream BB conformance question about recoverability when completed
 content differs from streamed content.
 
-The Read the Room Codex plugin's normal door-crossing path was smoke-tested in
-BB thread `thr_9wjgja8st7`. Before filing, reproduce the completion-replacement
-behavior on the BB version being targeted.
+Before filing, reproduce the completion-replacement behavior on the BB version
+being targeted.

@@ -63,9 +63,10 @@ check is content-blind — it verifies that things changed, never what they
 say — and if the upkeep fumbles twice, the door opens anyway and the miss
 goes on record.
 
-**Lets Claude stay in its room.** A turn can end with a one-line marker
-instead of a reply — deliberate, counted, and visible — for turns that are
-honest waiting rather than something worth saying.
+**Lets Claude stay in its room.** For honest waiting rather than something
+worth saying, Claude Code shows a one-line marker instead of a reply. Codex
+keeps the already-visible workspace in view and emits no new addressed reply.
+Either way, staying is deliberate and counted.
 
 ## Claude Code and Codex
 

@@ -9,6 +9,7 @@ import {
   canonicalizeInstalledPath,
   closeMcp,
   copyTrackedFiles,
+  resolveHookLaunch,
   resolveMcpLaunch,
   withTimeout,
 } from "../scripts/verify-codex-install.mjs";
@@ -108,16 +109,79 @@ test("MCP operations time out and cleanup closes both client and transport", asy
   assert.deepEqual(closed, ["client", "transport"]);
 });
 
-test("cached MCP launch resolves cwd from the plugin root without rewriting argv", () => {
-  const launch = resolveMcpLaunch(
-    {
-      command: "node",
-      args: ["${PLUGIN_ROOT}/dist/read-the-room-server.js", "--host", "codex"],
-      cwd: "runtime",
-    },
-    "/tmp/read-the-room-cache",
-  );
+test("manifest-derived hook and MCP launches resolve inside the cached plugin", () => {
+  const work = mkdtempSync(join(tmpdir(), "read-the-room-launch-safe-"));
+  const installed = join(work, "installed");
+  const source = join(work, "source");
+  mkdirSync(source);
+  mkdirSync(join(installed, "hooks"), { recursive: true });
+  mkdirSync(join(installed, "dist"), { recursive: true });
+  writeFileSync(join(installed, "hooks", "session-start.cjs"), "");
+  writeFileSync(join(installed, "dist", "read-the-room-server.js"), "");
+  try {
+    const hook = resolveHookLaunch(
+      'node "${PLUGIN_ROOT}/hooks/session-start.cjs" --host codex',
+      installed,
+      source,
+    );
+    assert.equal(hook.cwd, realpathSync(source));
+    assert.deepEqual(hook.args, [join(realpathSync(installed), "hooks", "session-start.cjs"), "--host", "codex"]);
 
-  assert.equal(launch.cwd, "/tmp/read-the-room-cache/runtime");
-  assert.deepEqual(launch.args, ["${PLUGIN_ROOT}/dist/read-the-room-server.js", "--host", "codex"]);
+    const mcp = resolveMcpLaunch(
+      { command: "node", args: ["./dist/read-the-room-server.js", "--host", "codex"], cwd: "." },
+      installed,
+      source,
+    );
+    assert.equal(mcp.cwd, realpathSync(installed));
+    assert.deepEqual(mcp.args, [join(realpathSync(installed), "dist", "read-the-room-server.js"), "--host", "codex"]);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("manifest launch validation rejects absolute and parent-traversal paths", () => {
+  const work = mkdtempSync(join(tmpdir(), "read-the-room-launch-paths-"));
+  const installed = join(work, "installed");
+  const source = join(work, "source");
+  mkdirSync(installed);
+  mkdirSync(source);
+  try {
+    assert.throws(
+      () => resolveHookLaunch('node "/tmp/elsewhere.cjs" --host codex', installed, source),
+      /absolute|PLUGIN_ROOT|installed/i,
+    );
+    assert.throws(
+      () => resolveMcpLaunch({ command: "node", args: ["/tmp/elsewhere.js", "--host", "codex"], cwd: "." }, installed, source),
+      /absolute|relative|installed/i,
+    );
+    assert.throws(
+      () => resolveMcpLaunch({ command: "node", args: ["./server.js", "--host", "codex"], cwd: "../source" }, installed, source),
+      /parent|traversal|installed/i,
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("manifest launch validation rejects a symlinked runtime escape", () => {
+  const work = mkdtempSync(join(tmpdir(), "read-the-room-launch-symlink-"));
+  const installed = join(work, "installed");
+  const source = join(work, "source");
+  const outside = join(work, "outside.js");
+  mkdirSync(join(installed, "dist"), { recursive: true });
+  mkdirSync(source);
+  writeFileSync(outside, "");
+  symlinkSync(outside, join(installed, "dist", "read-the-room-server.js"));
+  try {
+    assert.throws(
+      () => resolveMcpLaunch(
+        { command: "node", args: ["./dist/read-the-room-server.js", "--host", "codex"], cwd: "." },
+        installed,
+        source,
+      ),
+      /symlink|escape|installed/i,
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 });
