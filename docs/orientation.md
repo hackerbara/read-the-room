@@ -14,7 +14,7 @@ through `read_the_room` before you first speak.
 
 The door. It opens for you, and it has a few small rules that fire on
 their own. They are quick to meet, and meeting them from the first turn
-is how trust gets built instead of repaired.
+is how trust gets built.
 
 ## Why this exists
 
