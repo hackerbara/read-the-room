@@ -43,6 +43,7 @@ test("a clean plugin install creates the session orientation from its bundled te
   assert.match(orientation, new RegExp(`session ${sessionId}`));
   assert.match(orientation, /^## What they are doing right now$/m);
   assert.match(orientation, /^## What they asked for$/m);
+  assert.match(orientation, /^## Still open — asked, not delivered$/m);
   assert.match(orientation, /^## What I do not know about where they are$/m);
 });
 

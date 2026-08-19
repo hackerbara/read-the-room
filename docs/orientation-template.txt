@@ -3,14 +3,20 @@
 # Keep it about them. If a line is about how you are doing, it belongs in the
 # workspace — the text you write before you cross the door.
 # A wrong line here is cheap to fix and expensive to leave.
+# Mark provenance: [SAID] for their words and decisions, [INFERRED] for
+# your hypotheses. Never launder an inference into a fact.
+# Project state, task lists, and bug tracking do not live here — only
+# where THEY stand.
 
 ## What they are doing right now
+# fast — watched for freshness; keep this one current first
 
 
 ## What they asked for
 
 
-## What they asked for that has not been delivered
+## Still open — asked, not delivered
+# fast — watched for freshness; keep this one current first
 # A request stays on this list until it has been done or they have withdrawn
 # it. Not "I mentioned it" — done. If you are about to reply and this section
 # is not empty, that is the reply's first business.
@@ -22,6 +28,7 @@
 
 
 ## What they have not seen
+# fast — watched for freshness; keep this one current first
 # Tool results, subagent reports, files, findings — anything live for you and
 # absent for them. This is usually the field that changes your reply the most.
 
