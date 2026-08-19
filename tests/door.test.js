@@ -121,6 +121,9 @@ test("live MCP descriptions state each host's real display and stay contract", a
       if (host === "codex") {
         assert.match(tool.description, /ordinary assistant language streams visibly/i);
         assert.match(tool.description, /client may later group completed\s+work/i);
+        assert.match(tool.description, /opens the door when nothing is due/i);
+        assert.match(tool.description, /presents a key that must be returned/i);
+        assert.doesNotMatch(tool.description, /returns the standing orientation[\s\S]*and opens the current turn's door/i);
         assert.doesNotMatch(tool.description, /display keeps it out of their way/i);
         assert.match(stay, /streamed workspace remains visible/i);
         assert.match(stay, /no new addressed reply/i);

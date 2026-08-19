@@ -13,8 +13,9 @@ Use ordinary language as workspace at whatever length the work needs, but know
 that Read the Room does not hide it: ordinary assistant language streams visibly
 while the turn is active, though the surrounding client may later group completed
 work in an expandable interface. This tool returns the standing orientation for
-this session and opens the current turn's door. If the orientation disagrees with
-what you were about to say, revise it and cross the door again.`;
+this session. It opens the door when nothing is due; when upkeep is due, it
+presents a key that must be returned before the door opens. If the orientation
+disagrees with what you were about to say, revise it and cross the door again.`;
 
 const CLAUDE_STAY_DESCRIPTION =
   "End this turn in your room — nothing enters theirs but a one-line marker. " +
