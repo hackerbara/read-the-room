@@ -200,8 +200,11 @@ Per turn: one extra tool call, and a handful of small file reads and writes.
 If Claude forgets the door: up to two extra generations of the whole turn.
 
 On disk: roughly fifteen small state files per session in your system temp
-directory, under `claude-orientation/`. They are removed when the session
-ends, and a fourteen-day sweep catches anything a crash leaves behind.
+directory, under `claude-orientation/`. Nothing is deleted when a session
+ends — sessions stay resumable under the same id long after that, and
+deleting on end would make a resume look like a blank room. State files are
+instead cleaned by a fourteen-day sweep, which also catches anything a
+crash leaves behind.
 
 ---
 

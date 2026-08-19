@@ -358,9 +358,13 @@ port was verified 42/42 byte-identical with a negative control):
 
 ## 14. Mechanical riders (ship with the round)
 
-- Dead session file cleanup: SessionEnd hook (all reasons) removes the
-  session's state files; reinject's existing msg/ sweep pattern extends
-  to sweep any session's state files older than 14 days (crash cover).
+- Dead session file cleanup: no SessionEnd deletion — Claude Code sessions
+  are resumable under the same session id after prompt_input_exit, terminal
+  close, and `/clear` (old sessions stay in the resume picker), so an
+  immediate delete would leave a resume finding no state and SessionStart
+  silently reseeding a blank template. Reinject's existing msg/ sweep
+  pattern extends to sweep any session's state files older than 14 days
+  instead; that sweep is now the entire cleanup story, not just crash cover.
 - Sidecar/state atomic write (§5) — closes the observed desync bug.
 
 ## 15. Out or resting (do not silently reopen)
