@@ -101,11 +101,23 @@ function run(raw) {
     return;
   }
 
-  if (status !== 'CLOSED' && status !== 'SPOKEN') return;
-
-  const shortChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_SHORT_CHARS, '400'), 10);
   // displayContent:"" rendering nothing is inferred, not documented.
   const emptyVal = process.env.CLAUDE_ORIENTATION_EMPTY || '';
+
+  if (status === 'STAYED') {
+    if (!isFinal) { emit(emptyVal); return; }
+    let note = '';
+    try {
+      note = fs.readFileSync(path.join(base, `${sessionId}.staynote`), 'utf8').trim();
+      fs.unlinkSync(path.join(base, `${sessionId}.staynote`));
+    } catch {}
+    emit(`■ stayed in this turn${note ? ` — ${note}` : ''} (nothing was said; ctrl+O for the workspace)`);
+    return;
+  }
+
+  if (status !== 'CLOSED' && status !== 'SPOKEN' && status !== 'KEYED') return;
+
+  const shortChars = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_SHORT_CHARS, '150'), 10);
   const placeholderFmt = process.env.CLAUDE_ORIENTATION_PLACEHOLDER ||
     '⋯ working notes — %s lines · press ctrl+O to expand';
 
