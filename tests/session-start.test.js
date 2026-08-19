@@ -166,6 +166,45 @@ test("Codex normalizes the known 39d5f4c persisted brief without overwriting it"
   assert.equal(readFileSync(join(box.pluginData, "orientation-brief.md"), "utf8"), legacyBrief39d5f4c);
 });
 
+test("Codex normalizes a CRLF-converted 39d5f4c persisted brief without overwriting its bytes", (t) => {
+  const box = sandbox(t);
+  mkdirSync(box.pluginData, { recursive: true });
+  const persisted = Buffer.from(legacyBrief39d5f4c.replace(/\n/g, "\r\n"));
+  writeFileSync(join(box.pluginData, "orientation-brief.md"), persisted);
+
+  const output = context(runSessionStart({
+    ...box,
+    sessionId: "codex-legacy-brief-crlf",
+    host: "codex",
+    source: "compact",
+  }));
+
+  assert.doesNotMatch(output, /The full\s+document is listed at the end of this message/i);
+  assert.equal(output.match(/You have been here before in this session/g)?.length, 1);
+  assert.deepEqual(readFileSync(join(box.pluginData, "orientation-brief.md")), persisted);
+});
+
+test("Codex does not delete user prose between the legacy preamble and channel marker", (t) => {
+  const box = sandbox(t);
+  mkdirSync(box.pluginData, { recursive: true });
+  const persisted = legacyBrief39d5f4c.replace(
+    `\n\n${channelStart}`,
+    `\n\nUser-added bridge.\n\n${channelStart}`,
+  );
+  writeFileSync(join(box.pluginData, "orientation-brief.md"), persisted);
+
+  const output = context(runSessionStart({
+    ...box,
+    sessionId: "codex-edited-legacy-brief",
+    host: "codex",
+    source: "compact",
+  }));
+
+  assert.match(output, /The full\s+document is listed at the end of this message/i);
+  assert.match(output, /User-added bridge/);
+  assert.equal(readFileSync(join(box.pluginData, "orientation-brief.md"), "utf8"), persisted);
+});
+
 test("Codex fails open when a marked document has no channel fragment", (t) => {
   const box = sandbox(t);
   mkdirSync(box.pluginData, { recursive: true });

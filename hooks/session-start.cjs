@@ -130,12 +130,15 @@ function renderChannels(text, host, replacement = '') {
 
 function normalizeCodexBrief(text) {
   const marker = '<!-- read-the-room:channel:start -->';
-  const legacyPreamble = `You have been here before in this session; this is the short form. The full
-document is listed at the end of this message if you want it.
-
-`;
-  if (!text.startsWith(legacyPreamble + marker)) return text;
-  return text.slice(legacyPreamble.length);
+  const lines = [
+    'You have been here before in this session; this is the short form. The full',
+    'document is listed at the end of this message if you want it.',
+  ];
+  for (const newline of ['\n', '\r\n']) {
+    const legacyPreamble = lines.join(newline) + newline + newline;
+    if (text.startsWith(legacyPreamble + marker)) return text.slice(legacyPreamble.length);
+  }
+  return text;
 }
 
 function run(raw) {
