@@ -77,10 +77,11 @@ function sandbox(prefix) {
   return { dir, temp, base };
 }
 
-function startClient(temp, sessionId, extraEnv = {}) {
+function startClient(temp, sessionId, extraEnv = {}, host = "claude") {
+  const entry = process.env.DOOR_SERVER_ENTRY || join(pluginRoot, "server", "index.js");
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [join(pluginRoot, "server", "index.js")],
+    args: [entry, "--host", host],
     cwd: pluginRoot,
     env: { ...process.env, TMPDIR: temp, CLAUDE_CODE_SESSION_ID: sessionId, ...extraEnv },
     stderr: "pipe",
@@ -95,6 +96,182 @@ async function call(client, args = {}) {
 }
 
 const TEMPLATE = "## What they are doing right now\nfoo\n## What they have not seen\nbar\n";
+
+function seedClaudeDisplayState(base, sid, turn) {
+  writeFileSync(join(base, `${sid}.workspace`), `${turn} 37`);
+  writeFileSync(join(base, `${sid}.unseen`), String(turn - 1));
+}
+
+function assertNoClaudeDisplayClaims(response) {
+  assert.doesNotMatch(response, /Workspace this turn:/);
+  assert.doesNotMatch(response, /replaced with the marker/i);
+  assert.doesNotMatch(response, /They saw one line/i);
+}
+
+test("live MCP descriptions state each host's real display and stay contract", async () => {
+  for (const host of ["claude", "codex"]) {
+    const { dir, temp } = sandbox(`rtr-door-description-${host}-`);
+    const { client, transport } = startClient(temp, `description-${host}`, {}, host);
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      const tool = listed.tools.find((candidate) => candidate.name === "read_the_room");
+      assert.ok(tool);
+      const stay = tool.inputSchema.properties.stay.description;
+      if (host === "codex") {
+        assert.match(tool.description, /ordinary assistant language streams visibly/i);
+        assert.match(tool.description, /client may later group completed\s+work/i);
+        assert.doesNotMatch(tool.description, /display keeps it out of their way/i);
+        assert.match(stay, /streamed workspace remains visible/i);
+        assert.match(stay, /no new addressed reply/i);
+        assert.doesNotMatch(stay, /one-line marker/i);
+      } else {
+        assert.match(tool.description, /display keeps it out of their way/i);
+        assert.match(stay, /nothing enters theirs but a one-line marker/i);
+      }
+    } finally {
+      await client.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("Codex response matrix omits Claude display state while preserving keyed transitions", async () => {
+  const missing = sandbox("rtr-door-codex-missing-");
+  const missingClient = startClient(missing.temp, "codex-missing", {}, "codex");
+  try {
+    await missingClient.client.connect(missingClient.transport);
+    assertNoClaudeDisplayClaims(await call(missingClient.client));
+  } finally {
+    await missingClient.client.close();
+    rmSync(missing.dir, { recursive: true, force: true });
+  }
+
+  const clean = sandbox("rtr-door-codex-clean-");
+  const cleanSid = "codex-clean";
+  seedSession(clean.base, cleanSid, {
+    seedText: TEMPLATE,
+    currentText: TEMPLATE.replace("foo", "a live fact"),
+    turn: 5,
+    changedAt: 4,
+  });
+  seedClaudeDisplayState(clean.base, cleanSid, 5);
+  const cleanClient = startClient(clean.temp, cleanSid, {}, "codex");
+  try {
+    await cleanClient.client.connect(cleanClient.transport);
+    assertNoClaudeDisplayClaims(await call(cleanClient.client));
+    assert.equal(readFileSync(join(clean.base, `${cleanSid}.gate`), "utf8"), "OPEN 5");
+    assert.ok(existsSync(join(clean.base, `${cleanSid}.unseen`)), "Codex must not consume Claude unseen state");
+  } finally {
+    await cleanClient.client.close();
+    rmSync(clean.dir, { recursive: true, force: true });
+  }
+
+  const keyed = sandbox("rtr-door-codex-keyed-");
+  const keyedSid = "codex-keyed";
+  const { orientPath } = seedSession(keyed.base, keyedSid, { seedText: TEMPLATE, turn: 1 });
+  seedClaudeDisplayState(keyed.base, keyedSid, 1);
+  const keyedClient = startClient(keyed.temp, keyedSid, {}, "codex");
+  try {
+    await keyedClient.client.connect(keyedClient.transport);
+    const issued = await call(keyedClient.client);
+    assertNoClaudeDisplayClaims(issued);
+    assert.match(issued, /THE DOOR IS KEYED/);
+    const nonce = readFileSync(join(keyed.base, `${keyedSid}.key`), "utf8").split(/\s+/)[0];
+    assertNoClaudeDisplayClaims(await call(keyedClient.client));
+    assertNoClaudeDisplayClaims(await call(keyedClient.client, { key: nonce }));
+    appendFileSync(orientPath, "\nA fact learned in this turn.\n");
+    const returned = await call(keyedClient.client, { key: nonce });
+    assertNoClaudeDisplayClaims(returned);
+    assert.match(returned, /Key returned\. The door is open/);
+    assert.equal(readFileSync(join(keyed.base, `${keyedSid}.gate`), "utf8"), "OPEN 1");
+    assert.match(readFileSync(join(keyed.base, `${keyedSid}.ledger`), "utf8"), /^1 satisfied /m);
+  } finally {
+    await keyedClient.client.close();
+    rmSync(keyed.dir, { recursive: true, force: true });
+  }
+
+  const stoodDown = sandbox("rtr-door-codex-standdown-");
+  const stoodDownSid = "codex-standdown";
+  seedSession(stoodDown.base, stoodDownSid, { seedText: TEMPLATE, turn: 1 });
+  seedClaudeDisplayState(stoodDown.base, stoodDownSid, 1);
+  const stoodDownClient = startClient(stoodDown.temp, stoodDownSid, {}, "codex");
+  try {
+    await stoodDownClient.client.connect(stoodDownClient.transport);
+    assertNoClaudeDisplayClaims(await call(stoodDownClient.client));
+    const nonce = readFileSync(join(stoodDown.base, `${stoodDownSid}.key`), "utf8").split(/\s+/)[0];
+    assertNoClaudeDisplayClaims(await call(stoodDownClient.client, { key: nonce }));
+    const response = await call(stoodDownClient.client, { key: nonce });
+    assertNoClaudeDisplayClaims(response);
+    assert.match(response, /Stand-down:/);
+  } finally {
+    await stoodDownClient.client.close();
+    rmSync(stoodDown.dir, { recursive: true, force: true });
+  }
+});
+
+test("Codex stay leaves any key outstanding and describes the visible streamed workspace", async () => {
+  for (const keyed of [false, true]) {
+    const { dir, temp, base } = sandbox(`rtr-door-codex-stay-${keyed}-`);
+    const sid = `codex-stay-${keyed}`;
+    seedSession(base, sid, { seedText: TEMPLATE, turn: 3 });
+    if (keyed) writeFileSync(join(base, `${sid}.key`), "nonce 3 0\nsetup baseline\n");
+    const { client, transport } = startClient(temp, sid, {}, "codex");
+    try {
+      await client.connect(transport);
+      const response = await call(client, { stay: true, note: "waiting" });
+      assert.equal(response, "Stayed in. The streamed workspace remains visible; no new addressed reply is produced. The room keeps counting.");
+      assertNoClaudeDisplayClaims(response);
+      assert.equal(existsSync(join(base, `${sid}.key`)), keyed);
+      if (keyed) assert.match(readFileSync(join(base, `${sid}.ledger`), "utf8"), /^3 stayed-keyed /m);
+    } finally {
+      await client.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("Claude response matrix retains workspace and unseen presentation on full responses", async () => {
+  for (const scenario of ["clean", "issued", "replay", "success", "stand-down"]) {
+    const { dir, temp, base } = sandbox(`rtr-door-claude-${scenario}-`);
+    const sid = `claude-${scenario}`;
+    const clean = scenario === "clean";
+    const { orientPath } = seedSession(base, sid, {
+      seedText: TEMPLATE,
+      currentText: clean ? TEMPLATE.replace("foo", "a live fact") : undefined,
+      turn: 1,
+      changedAt: clean ? 1 : 0,
+    });
+    seedClaudeDisplayState(base, sid, 1);
+    const { client, transport } = startClient(temp, sid);
+    try {
+      await client.connect(transport);
+      let response;
+      if (scenario === "clean" || scenario === "issued") {
+        response = await call(client);
+      } else {
+        await call(client);
+        const nonce = readFileSync(join(base, `${sid}.key`), "utf8").split(/\s+/)[0];
+        seedClaudeDisplayState(base, sid, 1);
+        if (scenario === "replay") response = await call(client);
+        if (scenario === "success") {
+          appendFileSync(orientPath, "\nA fact learned in this turn.\n");
+          response = await call(client, { key: nonce });
+        }
+        if (scenario === "stand-down") {
+          await call(client, { key: nonce });
+          seedClaudeDisplayState(base, sid, 1);
+          response = await call(client, { key: nonce });
+        }
+      }
+      assert.match(response, /Workspace this turn: 37 characters\./);
+      assert.match(response, /replaced with the marker/i);
+    } finally {
+      await client.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
 
 test("virgin file issues a setup key; a bare re-call re-presents it unchanged; a real edit satisfies it", async () => {
   const { dir, temp, base } = sandbox("rtr-door-setup-");

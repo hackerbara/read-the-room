@@ -15,8 +15,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { computeReasons, verifyReturn, renderAges } from "./logic.mjs";
+import { hostFromArgs, toolDescription, stayDescription, stayResponse } from "./host.mjs";
 
 const BASE = join((process.env.TMPDIR || tmpdir()).replace(/\/+$/, ""), "claude-orientation");
+const host = hostFromArgs(process.argv.slice(2));
 
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -325,15 +327,7 @@ server.registerTool(
   "read_the_room",
   {
     title: "Read the room",
-    description:
-      "Write your answer first, then call this. It is permission to speak " +
-      "into their room, not a check you pass. Everything you write before " +
-      "calling it is yours — think at whatever length you need, the display " +
-      "keeps it out of their way. What comes back is the standing model of " +
-      "the user for this session, plus facts about the orientation file itself. " +
-      "Then say the thing, once, addressed to them. If what comes back does " +
-      "not match what you drafted, revise before you speak; calling again " +
-      "after revising is expected.",
+    description: toolDescription(host),
     inputSchema: {
       note: z.string().optional().describe(
         "What you are about to carry into their room, in a sentence. " +
@@ -344,9 +338,7 @@ server.registerTool(
       affirm: z.array(z.string()).optional().describe(
         "Section headers you re-read just now and checked are still current. " +
         "Answers freshness only; never answers pruning."),
-      stay: z.boolean().optional().describe(
-        "End this turn in your room — nothing enters theirs but a one-line marker. " +
-        "Legal, counted; waiting is not a failure. Use note for the marker text."),
+      stay: z.boolean().optional().describe(stayDescription(host)),
     },
   },
   async (args) => {
@@ -377,7 +369,7 @@ server.registerTool(
       }
       const held = readKeyFile(keyFile);
       if (held && held.turn === turnStr) appendLedger(ledgerFile, turnStr, "stayed-keyed", null, reasonText(held.reasons));
-      return text("Stayed in. The marker is all they will see this turn. The room keeps counting.");
+      return text(stayResponse(host));
     }
 
     if (!existsSync(orientFile)) {
@@ -439,40 +431,41 @@ server.registerTool(
       "call working. Stop, think it through, update this file if your " +
       "understanding of them changed, and go through the door again before you reply.";
 
-    // Turn token + char count of what message-display.sh hid this turn.
-    const workspaceFile = join(BASE, `${sessionId}.workspace`);
-    let workspaceChars = 0;
-    try {
-      if (existsSync(workspaceFile)) {
-        const raw = readFileSync(workspaceFile, "utf8").trim();
-        const [wTurn, wCountRaw] = raw.split(/\s+/, 2);
-        if (wTurn && count !== null && wTurn === String(count) && /^[0-9]+$/.test(wCountRaw || "")) {
-          workspaceChars = parseInt(wCountRaw, 10);
-        }
-      }
-    } catch {
-      // workspaceChars stays 0
-    }
-    const workspaceLine = `\nWorkspace this turn: ${workspaceChars} characters.`;
-
-    // A hidden message that went unreported for a full turn: say so once.
-    const unseenFile = join(BASE, `${sessionId}.unseen`);
+    let workspaceLine = "";
     let unseenBlock = "";
-    try {
-      if (existsSync(unseenFile)) {
-        const raw = readFileSync(unseenFile, "utf8").trim();
-        const unseenTurn = /^[0-9]+$/.test(raw) ? parseInt(raw, 10) : null;
-        if (unseenTurn !== null && count !== null && unseenTurn < count) {
-          unseenBlock = `\n\nYour last reply was replaced with the marker. They saw one line, not your
+    if (host === "claude") {
+      const workspaceFile = join(BASE, `${sessionId}.workspace`);
+      let workspaceChars = 0;
+      try {
+        if (existsSync(workspaceFile)) {
+          const raw = readFileSync(workspaceFile, "utf8").trim();
+          const [wTurn, wCountRaw] = raw.split(/\s+/, 2);
+          if (wTurn && count !== null && wTurn === String(count) && /^[0-9]+$/.test(wCountRaw || "")) {
+            workspaceChars = parseInt(wCountRaw, 10);
+          }
+        }
+      } catch {
+        // workspaceChars stays 0
+      }
+      workspaceLine = `\nWorkspace this turn: ${workspaceChars} characters.`;
+
+      const unseenFile = join(BASE, `${sessionId}.unseen`);
+      try {
+        if (existsSync(unseenFile)) {
+          const raw = readFileSync(unseenFile, "utf8").trim();
+          const unseenTurn = /^[0-9]+$/.test(raw) ? parseInt(raw, 10) : null;
+          if (unseenTurn !== null && count !== null && unseenTurn < count) {
+            unseenBlock = `\n\nYour last reply was replaced with the marker. They saw one line, not your
 text — assume they have not read it.
 The workspace is right and you should use it. Putting it in their room is the
 cost. Clutter delivered into someone's room gets experienced as not having
 listened, whatever you meant by it, and that is how trust goes.`;
-          unlinkSync(unseenFile);
+            unlinkSync(unseenFile);
+          }
         }
+      } catch {
+        // unseenBlock stays ""
       }
-    } catch {
-      // unseenBlock stays ""
     }
 
     const statsCore = `\n\n---\n${stalenessLine}${sizeLine}${workspaceLine}${unseenBlock}`;

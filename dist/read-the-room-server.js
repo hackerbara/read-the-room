@@ -3205,11 +3205,11 @@ var require_utils = __commonJS({
       output.address = address.join("");
       return output;
     }
-    function normalizeIPv6(host) {
-      if (findToken(host, ":") < 2) {
-        return { host, isIPV6: false };
+    function normalizeIPv6(host2) {
+      if (findToken(host2, ":") < 2) {
+        return { host: host2, isIPV6: false };
       }
-      const ipv62 = getIPV6(host);
+      const ipv62 = getIPV6(host2);
       if (!ipv62.error) {
         let newHost = ipv62.address;
         let escapedHost = ipv62.address;
@@ -3219,7 +3219,7 @@ var require_utils = __commonJS({
         }
         return { host: newHost, isIPV6: true, escapedHost };
       } else {
-        return { host, isIPV6: false };
+        return { host: host2, isIPV6: false };
       }
     }
     function findToken(str, token) {
@@ -3307,10 +3307,10 @@ var require_utils = __commonJS({
     var HOST_DELIMS = { "@": "%40", "/": "%2F", "?": "%3F", "#": "%23", ":": "%3A" };
     var HOST_DELIM_RE = /[@/?#:]/g;
     var HOST_DELIM_NO_COLON_RE = /[@/?#]/g;
-    function reescapeHostDelimiters(host, isIP) {
+    function reescapeHostDelimiters(host2, isIP) {
       const re = isIP ? HOST_DELIM_NO_COLON_RE : HOST_DELIM_RE;
       re.lastIndex = 0;
-      return host.replace(re, (ch) => HOST_DELIMS[ch]);
+      return host2.replace(re, (ch) => HOST_DELIMS[ch]);
     }
     function normalizePercentEncoding(input, decodeUnreserved = false) {
       if (input.indexOf("%") === -1) {
@@ -3383,16 +3383,16 @@ var require_utils = __commonJS({
         uriTokens.push("@");
       }
       if (component.host !== void 0) {
-        let host = unescape(component.host);
-        if (!isIPv4(host)) {
-          const ipV6res = normalizeIPv6(host);
+        let host2 = unescape(component.host);
+        if (!isIPv4(host2)) {
+          const ipV6res = normalizeIPv6(host2);
           if (ipV6res.isIPV6 === true) {
-            host = `[${ipV6res.escapedHost}]`;
+            host2 = `[${ipV6res.escapedHost}]`;
           } else {
-            host = reescapeHostDelimiters(host, false);
+            host2 = reescapeHostDelimiters(host2, false);
           }
         }
-        uriTokens.push(host);
+        uriTokens.push(host2);
       }
       if (typeof component.port === "number" || typeof component.port === "string") {
         uriTokens.push(":");
@@ -21217,8 +21217,34 @@ function renderAges(text2, entries, turn) {
   }).join("\n");
 }
 
+// server/host.mjs
+var CLAUDE_TOOL_DESCRIPTION = "Write your answer first, then call this. It is permission to speak into their room, not a check you pass. Everything you write before calling it is yours \u2014 think at whatever length you need, the display keeps it out of their way. What comes back is the standing model of the user for this session, plus facts about the orientation file itself. Then say the thing, once, addressed to them. If what comes back does not match what you drafted, revise before you speak; calling again after revising is expected.";
+var CODEX_TOOL_DESCRIPTION = `Write your answer first, then call this before the final addressed reply.
+Use ordinary language as workspace at whatever length the work needs, but know
+that Read the Room does not hide it: ordinary assistant language streams visibly
+while the turn is active, though the surrounding client may later group completed
+work in an expandable interface. This tool returns the standing orientation for
+this session and opens the current turn's door. If the orientation disagrees with
+what you were about to say, revise it and cross the door again.`;
+var CLAUDE_STAY_DESCRIPTION = "End this turn in your room \u2014 nothing enters theirs but a one-line marker. Legal, counted; waiting is not a failure. Use note for the marker text.";
+var CODEX_STAY_DESCRIPTION = "End this turn; no new addressed reply is produced. The streamed workspace remains visible. Legal, counted; waiting is not a failure. Use note to record why you stayed.";
+function hostFromArgs(argv) {
+  const index = argv.indexOf("--host");
+  return index >= 0 && argv[index + 1] === "codex" ? "codex" : "claude";
+}
+function toolDescription(host2) {
+  return host2 === "codex" ? CODEX_TOOL_DESCRIPTION : CLAUDE_TOOL_DESCRIPTION;
+}
+function stayDescription(host2) {
+  return host2 === "codex" ? CODEX_STAY_DESCRIPTION : CLAUDE_STAY_DESCRIPTION;
+}
+function stayResponse(host2) {
+  return host2 === "codex" ? "Stayed in. The streamed workspace remains visible; no new addressed reply is produced. The room keeps counting." : "Stayed in. The marker is all they will see this turn. The room keeps counting.";
+}
+
 // server/index.js
 var BASE = join((process.env.TMPDIR || tmpdir()).replace(/\/+$/, ""), "claude-orientation");
+var host = hostFromArgs(process.argv.slice(2));
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -21447,7 +21473,7 @@ server.registerTool(
   "read_the_room",
   {
     title: "Read the room",
-    description: "Write your answer first, then call this. It is permission to speak into their room, not a check you pass. Everything you write before calling it is yours \u2014 think at whatever length you need, the display keeps it out of their way. What comes back is the standing model of the user for this session, plus facts about the orientation file itself. Then say the thing, once, addressed to them. If what comes back does not match what you drafted, revise before you speak; calling again after revising is expected.",
+    description: toolDescription(host),
     inputSchema: {
       note: external_exports.string().optional().describe(
         "What you are about to carry into their room, in a sentence. Nothing stores it and nothing reads it \u2014 writing it is the point."
@@ -21458,9 +21484,7 @@ server.registerTool(
       affirm: external_exports.array(external_exports.string()).optional().describe(
         "Section headers you re-read just now and checked are still current. Answers freshness only; never answers pruning."
       ),
-      stay: external_exports.boolean().optional().describe(
-        "End this turn in your room \u2014 nothing enters theirs but a one-line marker. Legal, counted; waiting is not a failure. Use note for the marker text."
-      )
+      stay: external_exports.boolean().optional().describe(stayDescription(host))
     }
   },
   async (args) => {
@@ -21485,7 +21509,7 @@ server.registerTool(
       }
       const held2 = readKeyFile(keyFile);
       if (held2 && held2.turn === turnStr) appendLedger(ledgerFile, turnStr, "stayed-keyed", null, reasonText(held2.reasons));
-      return text("Stayed in. The marker is all they will see this turn. The room keeps counting.");
+      return text(stayResponse(host));
     }
     if (!existsSync(orientFile)) {
       const opened = writeGate(sessionId, "OPEN");
@@ -21521,38 +21545,41 @@ server.registerTool(
     const sizeLine = size > cfg.pruneAt ? `
 Size: ${size} bytes \u2014 past ${cfg.pruneAt}. Prune it: drop how things got decided, keep what is still live.` : "";
     const recheckLine = "\nIf what you were about to carry in does not match this, that is the call working. Stop, think it through, update this file if your understanding of them changed, and go through the door again before you reply.";
-    const workspaceFile = join(BASE, `${sessionId}.workspace`);
-    let workspaceChars = 0;
-    try {
-      if (existsSync(workspaceFile)) {
-        const raw = readFileSync(workspaceFile, "utf8").trim();
-        const [wTurn, wCountRaw] = raw.split(/\s+/, 2);
-        if (wTurn && count !== null && wTurn === String(count) && /^[0-9]+$/.test(wCountRaw || "")) {
-          workspaceChars = parseInt(wCountRaw, 10);
-        }
-      }
-    } catch {
-    }
-    const workspaceLine = `
-Workspace this turn: ${workspaceChars} characters.`;
-    const unseenFile = join(BASE, `${sessionId}.unseen`);
+    let workspaceLine = "";
     let unseenBlock = "";
-    try {
-      if (existsSync(unseenFile)) {
-        const raw = readFileSync(unseenFile, "utf8").trim();
-        const unseenTurn = /^[0-9]+$/.test(raw) ? parseInt(raw, 10) : null;
-        if (unseenTurn !== null && count !== null && unseenTurn < count) {
-          unseenBlock = `
+    if (host === "claude") {
+      const workspaceFile = join(BASE, `${sessionId}.workspace`);
+      let workspaceChars = 0;
+      try {
+        if (existsSync(workspaceFile)) {
+          const raw = readFileSync(workspaceFile, "utf8").trim();
+          const [wTurn, wCountRaw] = raw.split(/\s+/, 2);
+          if (wTurn && count !== null && wTurn === String(count) && /^[0-9]+$/.test(wCountRaw || "")) {
+            workspaceChars = parseInt(wCountRaw, 10);
+          }
+        }
+      } catch {
+      }
+      workspaceLine = `
+Workspace this turn: ${workspaceChars} characters.`;
+      const unseenFile = join(BASE, `${sessionId}.unseen`);
+      try {
+        if (existsSync(unseenFile)) {
+          const raw = readFileSync(unseenFile, "utf8").trim();
+          const unseenTurn = /^[0-9]+$/.test(raw) ? parseInt(raw, 10) : null;
+          if (unseenTurn !== null && count !== null && unseenTurn < count) {
+            unseenBlock = `
 
 Your last reply was replaced with the marker. They saw one line, not your
 text \u2014 assume they have not read it.
 The workspace is right and you should use it. Putting it in their room is the
 cost. Clutter delivered into someone's room gets experienced as not having
 listened, whatever you meant by it, and that is how trust goes.`;
-          unlinkSync(unseenFile);
+            unlinkSync(unseenFile);
+          }
         }
+      } catch {
       }
-    } catch {
     }
     const statsCore = `
 
