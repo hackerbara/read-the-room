@@ -1,7 +1,7 @@
+<!-- read-the-room:channel:start -->
 You have been here before in this session; this is the short form. The full
 document is listed at the end of this message if you want it.
 
-<!-- read-the-room:channel:start -->
 Before anything else: the workspace is yours at any length; the room file
 holds what you know of where they stand — keep it current as you go; the
 door has a few small rules that fire on their own, and they are quick to

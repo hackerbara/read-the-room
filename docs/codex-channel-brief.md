@@ -1,4 +1,6 @@
 <!-- read-the-room:channel:start -->
+You have been here before in this session; this is the short form.
+
 Before anything else: use workspace language at whatever length the work
 needs, knowing Codex streams it visibly; keep the room file current with what
 you know of where they stand; the door's small rules are quick to meet.

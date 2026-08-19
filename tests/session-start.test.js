@@ -86,11 +86,10 @@ test("Codex receives truthful full and compact workspace language", (t) => {
     assert.doesNotMatch(output, /nothing is hidden/i);
     assert.doesNotMatch(output, /ctrl\+O/i);
     assert.doesNotMatch(output, /full orientation document:/i);
+    assert.doesNotMatch(output, /The full\s+document is listed at the end of this message/i);
     assert.doesNotMatch(
       output,
-      new RegExp(join(box.dir, `plugin-data-${source}`, source === "startup"
-        ? "orientation.md"
-        : "orientation-brief.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      new RegExp(join(box.dir, `plugin-data-${source}`).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
 });
