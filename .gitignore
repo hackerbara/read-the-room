@@ -1,4 +1,6 @@
 .*
+!.codex-plugin/
+!.codex-plugin/**
 !.gitignore
 !.claude-plugin
 !.mcp.json

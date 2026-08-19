@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -23,6 +23,28 @@ function runHook(name, { temp, pluginData, input, args = [], extraEnv = {} }) {
     },
     input: JSON.stringify(input),
     encoding: "utf8",
+  });
+}
+
+function json(root, path) {
+  return JSON.parse(readFileSync(join(root, path), "utf8"));
+}
+
+function runManifestHook(cachedRoot, event, { temp, pluginData, input }) {
+  const hook = json(cachedRoot, "hooks/codex-hooks.json").hooks[event][0].hooks[0];
+  return spawnSync(hook.command, {
+    cwd: cachedRoot,
+    env: {
+      ...process.env,
+      TMPDIR: temp,
+      PLUGIN_ROOT: cachedRoot,
+      PLUGIN_DATA: pluginData,
+      CLAUDE_PLUGIN_ROOT: join(cachedRoot, "claude-decoy-root"),
+      CLAUDE_PLUGIN_DATA: join(cachedRoot, "claude-decoy-data"),
+    },
+    input: JSON.stringify(input),
+    encoding: "utf8",
+    shell: true,
   });
 }
 
@@ -96,4 +118,84 @@ test("Codex SessionStart, UserPromptSubmit, and the separately spawned bundle sh
   });
   assert.equal(codexWithoutPayload.status, 0, codexWithoutPayload.stderr);
   assert.equal(readFileSync(join(base, `${sid}.turns`), "utf8"), "1");
+});
+
+test("a disposable cached Codex package runs its manifest hooks and bundled MCP as one keyed session", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rtr-cached-package-"));
+  test.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cachedRoot = join(dir, "codex-home", "plugins", "cache", "read-the-room", "1.1.0");
+  const pluginData = join(dir, "codex-home", "plugin-data", "read-the-room");
+  const temp = join(dir, "tmp");
+  const sid = "cached-codex-session";
+
+  mkdirSync(cachedRoot, { recursive: true });
+  for (const path of [".codex-plugin", "docs", "hooks", "dist"]) {
+    cpSync(join(pluginRoot, path), join(cachedRoot, path), { recursive: true });
+  }
+  cpSync(join(pluginRoot, "codex.mcp.json"), join(cachedRoot, "codex.mcp.json"));
+
+  const manifest = json(cachedRoot, ".codex-plugin/plugin.json");
+  assert.equal(manifest.hooks, "./hooks/codex-hooks.json");
+  assert.equal(manifest.mcpServers, "./codex.mcp.json");
+
+  const started = runManifestHook(cachedRoot, "SessionStart", {
+    temp,
+    pluginData,
+    input: { session_id: sid, source: "startup" },
+  });
+  assert.equal(started.status, 0, started.stderr);
+  const additionalContext = JSON.parse(started.stdout).hookSpecificOutput.additionalContext;
+  assert.match(additionalContext, /ordinary assistant language streams visibly/);
+  assert.doesNotMatch(additionalContext, /Nobody has to receive it/);
+
+  const base = join(temp, "claude-orientation");
+  const orientationPath = join(base, `${sid}.orientation.txt`);
+  assert.match(readFileSync(orientationPath, "utf8"), /## What they are doing right now/);
+
+  const submitted = runManifestHook(cachedRoot, "UserPromptSubmit", {
+    temp,
+    pluginData,
+    input: { session_id: sid, cwd: cachedRoot },
+  });
+  assert.equal(submitted.status, 0, submitted.stderr);
+  assert.equal(submitted.stdout, "");
+  assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "CLOSED 1");
+
+  const mcp = json(cachedRoot, "codex.mcp.json")["read-the-room"];
+  const transport = new StdioClientTransport({
+    command: mcp.command,
+    args: mcp.args,
+    cwd: join(cachedRoot, mcp.cwd),
+    env: { ...process.env, TMPDIR: temp },
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "cached-package-test", version: "1.0.0" });
+  try {
+    await client.connect(transport);
+    const response = await client.callTool({ name: "read_the_room", arguments: {} });
+    const text = response.content[0].text;
+    assert.match(text, /THE DOOR IS KEYED/);
+    assert.match(text, new RegExp(`^# Where they are — session ${sid}$`, "m"));
+    assert.doesNotMatch(text, /Workspace this turn|only thing the user will see/);
+    const key = readFileSync(join(base, `${sid}.key`), "utf8");
+    const nonce = key.split(/\s+/)[0];
+    assert.match(text, new RegExp(`key: "${nonce}"`));
+    assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "KEYED 1");
+  } finally {
+    await client.close();
+  }
+
+  const stopped = runManifestHook(cachedRoot, "Stop", {
+    temp,
+    pluginData,
+    input: { session_id: sid, stop_hook_active: false, last_assistant_message: "" },
+  });
+  assert.equal(stopped.status, 0, stopped.stderr);
+  const continuation = JSON.parse(stopped.stdout);
+  assert.deepEqual(Object.keys(continuation).sort(), ["decision", "reason"]);
+  assert.equal(continuation.decision, "block");
+  assert.match(continuation.reason, /key was issued and not returned/);
+  assert.match(continuation.reason, /Outstanding: setup/);
+  assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "KEYED 1 stopped");
+  assert.equal(readFileSync(join(base, `${sid}.codex-reruns`), "utf8"), "1 1");
 });

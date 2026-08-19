@@ -1,0 +1,18 @@
+{
+  "name": "read-the-room",
+  "version": "1.1.0",
+  "description": "Keeps a coding agent's orientation on the person it is working with, ready before it replies.",
+  "author": { "name": "Hackerbara" },
+  "license": "MIT",
+  "hooks": "./hooks/codex-hooks.json",
+  "mcpServers": "./codex.mcp.json",
+  "interface": {
+    "displayName": "Read the Room",
+    "shortDescription": "Orient before replying",
+    "longDescription": "Keeps a session orientation file and brings it back at the threshold before the agent replies.",
+    "developerName": "Hackerbara",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": ["Use Read the Room for this task."]
+  }
+}

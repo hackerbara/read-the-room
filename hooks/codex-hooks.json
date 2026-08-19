@@ -1,0 +1,26 @@
+{
+  "description": "Read the Room orientation hooks for Codex.",
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/hooks/session-start.cjs\" --host codex",
+        "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\session-start.cjs\" --host codex"
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/hooks/reinject.cjs\" --host codex",
+        "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\reinject.cjs\" --host codex"
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/hooks/stop-gate.cjs\" --host codex",
+        "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\stop-gate.cjs\" --host codex"
+      }]
+    }]
+  }
+}

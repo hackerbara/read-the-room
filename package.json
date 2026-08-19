@@ -1,9 +1,12 @@
 {
   "name": "read-the-room",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "Keeps Claude's notes on you, and hands them back in the moment before it replies.",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "type": "module",
   "scripts": {
     "test": "node --test",

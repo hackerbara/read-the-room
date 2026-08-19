@@ -1,0 +1,7 @@
+{
+  "read-the-room": {
+    "command": "node",
+    "cwd": ".",
+    "args": ["./dist/read-the-room-server.js", "--host", "codex"]
+  }
+}
