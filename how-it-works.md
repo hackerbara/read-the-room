@@ -36,7 +36,10 @@ flowchart TD
     E -->|"no"| G["You see it as normal"]
     F --> H["THROUGH THE DOOR<br/>read_the_room"]
     G --> H
-    H --> I["The orientation file<br/>comes back"]
+    H --> KQ{"Is upkeep due?"}
+    KQ -->|"no"| I["The orientation file<br/>comes back"]
+    KQ -->|"yes"| KY["A key comes back instead:<br/>update or affirm the file,<br/>then return the key"]
+    KY --> H
     I --> J{"Claude judges:<br/>does the draft still fit?"}
     J -->|"no"| C
     J -->|"yes"| K["Claude speaks"]
@@ -46,6 +49,7 @@ flowchart TD
 
     style H fill:#e0a544,stroke:#8a5a00,color:#1a1a1a
     style I fill:#fff3d6,stroke:#e0a544,color:#1a1a1a
+    style KY fill:#fff3d6,stroke:#e0a544,color:#1a1a1a
     style J stroke-dasharray: 5 5
     style L fill:#d6ead8,stroke:#4a7a52,color:#1a1a1a
 ```
@@ -67,8 +71,15 @@ kept in the transcript, not put in front of you. To say a second thing, it has
 to come back through the door.
 
 When a turn ends with text written after Claude already spoke, it gets told so
-and asked whether that was meant for you. That only fires for text over about
-400 characters — a short trailing line goes unremarked.
+and asked whether that was meant for you. That only fires for text past the
+hiding threshold — a short trailing line goes unremarked.
+
+A turn can also end without a reply at all. If Claude is waiting on
+something — a background agent, a long build — it can stay in its room, and
+you see one line: `■ stayed in this turn — <note> (nothing was said; ctrl+O
+for the workspace)`. Staying is legal and counted; past 3 consecutive stays
+the machinery asks it to either come through with something or tell you
+plainly that it is holding, and why.
 
 ---
 
@@ -95,10 +106,34 @@ Kafka stays. Don't reopen it.
 Whether the staging consumers count.
 ```
 
-Along with two facts that are always included — how many turns since the file
-last changed, and how much Claude wrote to itself this turn — and one that
-appears only past about 6,000 characters, telling Claude the file has grown
-long enough to prune.
+Each section header comes back stamped with its own age — `(changed turn 41,
+9 ago)` — along with how much Claude wrote to itself this turn and the file's
+size in bytes.
+
+---
+
+## The key
+
+Three conditions make the door ask for upkeep before it opens. Each hands
+back a key instead of opening; doing the upkeep and returning the key is
+what opens the door.
+
+- **Setup** — the file is still the blank template. Fires on the first
+  crossing of a session, so the room gets set up before the first reply.
+- **Freshness** — a watched section has gone more than 6 turns untouched.
+  Updating it counts; so does affirming it — "I re-read this just now and
+  it still holds."
+- **Pruning** — the file has grown past 5,000 bytes. Only actually landing
+  back under the limit counts; no affirmation answers this one.
+
+The checks are content-blind throughout: a hash moved, a byte count fell.
+Nothing reads what the words say — the design rule is *any real change
+counts*. Every key event — issued, satisfied, affirmed, fumbled — lands in
+a small ledger file, so cheap compliance is at least visible compliance.
+
+If the upkeep fumbles twice, the door stands down: it opens anyway, the
+miss goes on the ledger, and that reason rests for 6 turns. Failing toward
+speech is the rule everywhere — no key can leave you unable to hear Claude.
 
 ---
 
@@ -157,18 +192,19 @@ Per turn: one extra tool call, and a handful of small file reads and writes.
 
 If Claude forgets the door: up to two extra generations of the whole turn.
 
-On disk: about a dozen small state files per session in your system temp
-directory, under `claude-orientation/`. They are not cleaned up automatically.
-Your operating system's temp sweep is what eventually removes them.
+On disk: roughly fifteen small state files per session in your system temp
+directory, under `claude-orientation/`. They are removed when the session
+ends, and a fourteen-day sweep catches anything a crash leaves behind.
 
 ---
 
 ## What it doesn't do
 
 - **It doesn't check the reply.** Nothing reads what Claude wrote and judges it.
-- **Nothing forces the door.** The tool call is easy to make and then ignore,
-  and there is no way to tell from the outside whether the file changed
-  anything.
+- **Nothing reads the file's content, either.** The door can now require
+  upkeep before it opens, but its checks are hashes and byte counts — that
+  something changed, never what it says — and after two fumbles it opens
+  regardless.
 - **It doesn't make replies shorter.**
 - **It isn't memory.** The orientation file is per-session. A new session
   starts with a blank one.
@@ -196,14 +232,25 @@ turned off:
 export CLAUDE_ORIENTATION_SUPPRESS=0   # show working notes instead of hiding them
 ```
 
-Replies under 180 characters are exempt from the missed-door nudge — a
-one-line answer does not owe a crossing. `CLAUDE_ORIENTATION_STOP_MIN_CHARS`
-changes that threshold; 0 removes the exemption.
+Replies under 100 characters are exempt from the missed-door nudge — a
+one-line answer does not owe a crossing. The exemption never applies while a
+key is outstanding: a keyed turn owes its upkeep whatever the reply length.
+`CLAUDE_ORIENTATION_STOP_MIN_CHARS` changes the threshold; 0 removes the
+exemption.
 
-Several others exist for tuning — the length at which text gets hidden, how
-many turns before a staleness nudge, and a kill switch,
-`CLAUDE_ORIENTATION_STOP=0`, that disables the backstop entirely. They are
-named in the hook sources and none are required.
+The key's knobs, all settable in your settings `env` block:
+`CLAUDE_ORIENTATION_FRESH_AT` (6 turns), `CLAUDE_ORIENTATION_PRUNE_AT`
+(5,000 bytes, strict), `CLAUDE_ORIENTATION_SETUP_KEY` (on; 0 disables),
+`CLAUDE_ORIENTATION_STAY_CAP` (3 consecutive stays),
+`CLAUDE_ORIENTATION_SNOOZE` (6 turns of rest after a stand-down).
+
+The current defaults are deliberately tight — hiding at 150 characters,
+the exemption at 100, pruning at 5,000 — chosen to see what real pressure
+does rather than derived from long use. Expect them to move.
+
+A kill switch, `CLAUDE_ORIENTATION_STOP=0`, disables the backstop entirely.
+The remaining tuning variables are named in the hook sources and none are
+required.
 
 "Orientation" is this project's older internal name. It survives in the
 environment variables, the state directory, and the document filenames.

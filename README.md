@@ -51,9 +51,23 @@ reach — immediately before speaking, when it can still change what gets said.
 text stays in the transcript and `ctrl+O` opens it. Set
 `CLAUDE_ORIENTATION_SUPPRESS=0` to see everything instead.
 
+**Sometimes asks for upkeep before the door opens.** When the file has sat
+untouched too long, grown past its budget, or is still the blank template,
+the door hands Claude a key: bring the file current, then come back in. The
+check is content-blind — it verifies that things changed, never what they
+say — and if the upkeep fumbles twice, the door opens anyway and the miss
+goes on record.
+
+**Lets Claude stay in its room.** A turn can end with a one-line marker
+instead of a reply — deliberate, counted, and visible — for turns that are
+honest waiting rather than something worth saying.
+
 ## What it can't do
 
-Nothing inspects Claude's reply or blocks it. This plugin simply puts a reflection and theory of mind step into Claude's process. How far that improves interaction is an open question.
+Nothing inspects Claude's reply or blocks it. The key's checks are hashes
+and byte counts; nothing ever reads or judges what the file says. This
+plugin simply puts a reflection and theory of mind step into Claude's
+process. How far that improves interaction is an open question.
 
 ## Install
 
