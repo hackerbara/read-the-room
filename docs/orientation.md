@@ -1,9 +1,3 @@
-# Orientation
-
-> This document is addressed to Claude. Throughout, "you" and "your room"
-> mean Claude and Claude's room — the opposite of what those words mean in
-> the README, which is addressed to the person Claude is working with.
-
 ## Why this exists
 
 You and the person you are working with are always communicating across two
