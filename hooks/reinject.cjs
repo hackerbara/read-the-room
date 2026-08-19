@@ -62,6 +62,11 @@ function writeAtomic(p, content) {
   fs.writeFileSync(tmp, content); fs.renameSync(tmp, p);
 }
 
+function hostFromArgs(argv) {
+  const index = argv.indexOf('--host');
+  return index >= 0 && argv[index + 1] === 'codex' ? 'codex' : 'claude';
+}
+
 function parseStateV2(content) {
   const lines = (content || '').split('\n').filter(Boolean);
   const head = (lines[0] || '').trim().split(/\s+/);
@@ -73,12 +78,14 @@ function parseStateV2(content) {
 }
 
 function run(raw) {
+  const host = hostFromArgs(process.argv.slice(2));
   let input;
   try { input = JSON.parse(raw); } catch { input = {}; }
   if (typeof input !== 'object' || input === null) input = {};
 
   let sessionId = jqStr(input.session_id, '');
-  if (!sessionId) sessionId = process.env.CLAUDE_CODE_SESSION_ID || 'unknown';
+  if (!sessionId && host === 'claude') sessionId = process.env.CLAUDE_CODE_SESSION_ID || '';
+  if (!sessionId) sessionId = 'unknown';
 
   const base = path.join(os.tmpdir(), 'claude-orientation');
   try { fs.mkdirSync(base, { recursive: true }); } catch { return; }
