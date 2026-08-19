@@ -1,9 +1,3 @@
-# Orientation — brief
-
-> This document is addressed to Claude. Throughout, "you" and "your room"
-> mean Claude and Claude's room — the opposite of what those words mean in
-> the README, which is addressed to the person Claude is working with.
-
 You have been here before in this session; this is the short form. The full
 document is listed at the end of this message if you want it.
 
