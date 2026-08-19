@@ -53,6 +53,32 @@ function readTokens(content, n) {
   return out;
 }
 
+function hostFromArgs(argv) {
+  const index = argv.indexOf('--host');
+  return index >= 0 && argv[index + 1] === 'codex' ? 'codex' : 'claude';
+}
+
+function emitContinuation(host, ctx) {
+  if (host === 'codex') {
+    process.stdout.write(JSON.stringify({ decision: 'block', reason: ctx }) + '\n');
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
+  }) + '\n');
+}
+
+function incrementCodexReruns(file, turn) {
+  let recordedTurn = '', count = 0;
+  try {
+    [recordedTurn, count] = readTokens(fs.readFileSync(file, 'utf8'), 2);
+    count = recordedTurn === turn && /^[0-9]+$/.test(count) ? parseInt(count, 10) : 0;
+  } catch { count = 0; }
+  count += 1;
+  try { fs.writeFileSync(file, `${turn} ${count}`); } catch {}
+  return count;
+}
+
 // bash `$(...)` command substitution strips all trailing newlines from what
 // it captures — LAST_ASSISTANT_MESSAGE's length check is measured post-strip.
 function stripTrailingNL(s) {
@@ -60,6 +86,7 @@ function stripTrailingNL(s) {
 }
 
 function run(raw) {
+  const host = hostFromArgs(process.argv.slice(2));
   // Rollback switch that does not require editing settings.json.
   const stopSwitch = envOrDefault('CLAUDE_ORIENTATION_STOP', '1');
   if (['0', 'off', 'false', 'no'].includes(stopSwitch)) return;
@@ -76,6 +103,7 @@ function run(raw) {
   const gateFile = path.join(base, `${sessionId}.gate`);
   const orientFile = path.join(base, `${sessionId}.orientation.txt`);
   const suppressedFile = path.join(base, `${sessionId}.suppressed`);
+  const codexRerunsFile = path.join(base, `${sessionId}.codex-reruns`);
   const turnsFile = path.join(base, `${sessionId}.turns`);
   const stateFile = path.join(base, `${sessionId}.state`);
   const hiddenFile = path.join(base, `${sessionId}.hidden`);
@@ -93,7 +121,11 @@ function run(raw) {
   // Gate OPEN: the door was called. Reset the suppressed counter. Checked
   // before stop_hook_active so a re-run that calls the door still clears it.
   if (status === 'OPEN') {
-    try { fs.writeFileSync(suppressedFile, '0'); } catch {}
+    if (host === 'claude') {
+      try { fs.writeFileSync(suppressedFile, '0'); } catch {}
+    } else {
+      try { fs.unlinkSync(codexRerunsFile); } catch {}
+    }
     try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), '0'); } catch {}
     stamp('OPEN');
     return;
@@ -102,9 +134,13 @@ function run(raw) {
   // Gate SPOKEN: door was called and answered. Same reset as OPEN, plus a
   // one-shot signal if text was hidden after the reply went out.
   if (status === 'SPOKEN') {
-    try { fs.writeFileSync(suppressedFile, '0'); } catch {}
     try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), '0'); } catch {}
     stamp('SPOKEN');
+    if (host === 'codex') {
+      try { fs.unlinkSync(codexRerunsFile); } catch {}
+      return;
+    }
+    try { fs.writeFileSync(suppressedFile, '0'); } catch {}
     const aftertalkFile = path.join(base, `${sessionId}.aftertalk`);
     let aftertalk = '';
     try { aftertalk = fs.readFileSync(aftertalkFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
@@ -119,9 +155,7 @@ function run(raw) {
       const ctx = `The door closed behind you and you wrote more after it. Did you mean that for
 them? Either way, the room is probably worth a one-line update.`;
       // jq -c always appends a trailing newline.
-      process.stdout.write(JSON.stringify({
-        hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
-      }) + '\n');
+      emitContinuation(host, ctx);
     }
     return;
   }
@@ -135,16 +169,24 @@ them? Either way, the room is probably worth a one-line update.`;
     // stop_hook_active true — same guard as KEYED/CLOSED. Without it, a
     // real capped stay would re-read-increment-write the streak twice per
     // turn (once per run), inflating it by 2 instead of 1.
-    const rerun = jqStr(input.stop_hook_active, 'false') === 'true';
+    const rerun = host === 'claude' && jqStr(input.stop_hook_active, 'false') === 'true';
     if (rerun) return;
     let streak = 0;
     try { streak = parseInt(fs.readFileSync(path.join(base, `${sessionId}.staystreak`), 'utf8').replace(/[^0-9]/g, ''), 10) || 0; } catch {}
-    streak += 1;
-    try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), String(streak)); } catch {}
+    if (host === 'claude' || flag !== 'stopped') {
+      streak += 1;
+      try { fs.writeFileSync(path.join(base, `${sessionId}.staystreak`), String(streak)); } catch {}
+    }
     const stayCap = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STAY_CAP, '3'), 10);
     if (stayCap > 0 && streak > stayCap) {
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop',
-        additionalContext: `You have stayed in for ${streak} consecutive turns. Staying is legal and counted, but the person has heard nothing in all that time. Either go through the door with something for them, or tell them plainly you are holding and why.` } }) + '\n');
+      if (host === 'codex') {
+        const count = incrementCodexReruns(codexRerunsFile, turn || '0');
+        const max = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
+        if (max > 0 && count > max) return;
+      }
+      emitContinuation(host, `You have stayed in for ${streak} consecutive turns. Staying is legal and counted, but the person has heard nothing in all that time. Either go through the door with something for them, or tell them plainly you are holding and why.`);
+    } else if (host === 'codex') {
+      try { fs.unlinkSync(codexRerunsFile); } catch {}
     }
     return;
   }
@@ -153,7 +195,7 @@ them? Either way, the room is probably worth a one-line update.`;
   // an illegal end, like CLOSED, but the MIN_CHARS trivial-reply exemption
   // does not apply (a short reply must not silently void a due key).
   if (status === 'KEYED') {
-    const stopActive = jqStr(input.stop_hook_active, 'false') === 'true';
+    const stopActive = host === 'claude' && jqStr(input.stop_hook_active, 'false') === 'true';
     if (stopActive) return;
 
     let curTurn = '';
@@ -161,23 +203,29 @@ them? Either way, the room is probably worth a one-line update.`;
 
     // Consecutive closed/keyed-gate turns. Read by message-display.js, which
     // stops suppressing at 2.
-    let suppressed = 0;
-    try {
-      const digits = fs.readFileSync(suppressedFile, 'utf8').replace(/[^0-9]/g, '');
-      suppressed = digits ? parseInt(digits, 10) : 0;
-    } catch { suppressed = 0; }
-    suppressed += 1;
-    try { fs.writeFileSync(suppressedFile, String(suppressed)); } catch {}
+    let continuationCount = 0;
+    if (host === 'claude') {
+      try {
+        const digits = fs.readFileSync(suppressedFile, 'utf8').replace(/[^0-9]/g, '');
+        continuationCount = digits ? parseInt(digits, 10) : 0;
+      } catch { continuationCount = 0; }
+      continuationCount += 1;
+      try { fs.writeFileSync(suppressedFile, String(continuationCount)); } catch {}
+    } else {
+      continuationCount = incrementCodexReruns(codexRerunsFile, turn || '0');
+    }
 
     // Past STOP_MAX_RERUNS, stand down: stamp the gate (for interrupt
     // detection) and stop re-running.
     const stopMaxReruns = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
-    if (stopMaxReruns > 0 && suppressed > stopMaxReruns) { stamp('KEYED'); return; }
+    if (stopMaxReruns > 0 && continuationCount > stopMaxReruns) { stamp('KEYED'); return; }
 
     // Raw reasons (baseline tokens intact) go to the ledger — the durable
     // audit trail. Display copy strips the baseline (displayReason above).
     const reasons = readKeyReasons(path.join(base, `${sessionId}.key`));
-    appendLedger(base, sessionId, curTurn, 'lapsed', null, reasons.join('; '));
+    if (host === 'claude' || flag !== 'stopped') {
+      appendLedger(base, sessionId, curTurn, 'lapsed', null, reasons.join('; '));
+    }
     const ctx = `A key was issued and not returned — the door asked for upkeep before entry and the turn is ending without it.
 Outstanding: ${reasons.map(displayReason).join(' · ') || 'unknown'}
 Call read_the_room again: a bare call re-presents the key (not a fumble). Update or affirm what it names, return the key, then reply.`;
@@ -185,27 +233,27 @@ Call read_the_room again: a bare call re-presents the key (not a fumble). Update
     stamp('KEYED');
 
     // jq -c always appends a trailing newline.
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
-    }) + '\n');
+    emitContinuation(host, ctx);
     return;
   }
 
   if (status !== 'CLOSED') return;
 
   // This turn's hidden message matched this turn's reply, not working notes.
-  let hiddenTurn = '';
-  try { hiddenTurn = fs.readFileSync(hiddenFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
-  let curTurn = '';
-  try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
-  if (hiddenTurn && hiddenTurn === curTurn) {
-    try { fs.writeFileSync(unseenFile, curTurn); } catch {}
+  if (host === 'claude') {
+    let hiddenTurn = '';
+    try { hiddenTurn = fs.readFileSync(hiddenFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
+    let curTurn = '';
+    try { curTurn = fs.readFileSync(turnsFile, 'utf8').replace(/[^0-9]/g, ''); } catch {}
+    if (hiddenTurn && hiddenTurn === curTurn) {
+      try { fs.writeFileSync(unseenFile, curTurn); } catch {}
+    }
   }
 
   // The harness re-runs the turn after this hook injects context, with
   // stop_hook_active true; returning here caps the increment below to once
   // per turn.
-  const stopActive = jqStr(input.stop_hook_active, 'false') === 'true';
+  const stopActive = host === 'claude' && jqStr(input.stop_hook_active, 'false') === 'true';
   if (stopActive) return;
 
   let orientStat = null;
@@ -221,18 +269,22 @@ Call read_the_room again: a bare call re-presents the key (not a fumble). Update
 
   // Consecutive closed-gate turns. Read by message-display.js, which stops
   // suppressing at 2.
-  let suppressed = 0;
-  try {
-    const digits = fs.readFileSync(suppressedFile, 'utf8').replace(/[^0-9]/g, '');
-    suppressed = digits ? parseInt(digits, 10) : 0;
-  } catch { suppressed = 0; }
-  suppressed += 1;
-  try { fs.writeFileSync(suppressedFile, String(suppressed)); } catch {}
+  let continuationCount = 0;
+  if (host === 'claude') {
+    try {
+      const digits = fs.readFileSync(suppressedFile, 'utf8').replace(/[^0-9]/g, '');
+      continuationCount = digits ? parseInt(digits, 10) : 0;
+    } catch { continuationCount = 0; }
+    continuationCount += 1;
+    try { fs.writeFileSync(suppressedFile, String(continuationCount)); } catch {}
+  } else {
+    continuationCount = incrementCodexReruns(codexRerunsFile, turn || '0');
+  }
 
   // Past STOP_MAX_RERUNS, stand down: stamp the gate (for interrupt
   // detection) and stop re-running.
   const stopMaxReruns = parseInt(digitsOrDefault(process.env.CLAUDE_ORIENTATION_STOP_MAX_RERUNS, '2'), 10);
-  if (stopMaxReruns > 0 && suppressed > stopMaxReruns) { stamp('CLOSED'); return; }
+  if (stopMaxReruns > 0 && continuationCount > stopMaxReruns) { stamp('CLOSED'); return; }
 
   // Computed the same way reinject.js and the door do: valid only while the
   // recorded hash still matches.
@@ -252,9 +304,9 @@ Call read_the_room again: a bare call re-presents the key (not a fumble). Update
   }
 
   let backstopLine = '';
-  if (suppressed >= 2) {
+  if (host === 'claude' && continuationCount >= 2) {
     backstopLine = `
-This is turn ${suppressed} in a row where the door was not gone through. Hiding
+This is turn ${continuationCount} in a row where the door was not gone through. Hiding
 is off while that is true, so everything renders.`;
   }
 
@@ -270,9 +322,7 @@ Go through the door, then reply.`;
   stamp('CLOSED');
 
   // jq -c always appends a trailing newline.
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'Stop', additionalContext: ctx }
-  }) + '\n');
+  emitContinuation(host, ctx);
 }
 
 function envOrDefault(name, def) {
