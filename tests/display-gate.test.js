@@ -50,6 +50,16 @@ test("STAYED renders the stay marker with the note", () => {
     /^■ stayed in this turn — waiting on the retrieval agent \(nothing was said; ctrl\+O for the workspace\)/);
 });
 
+test("STAYED holds the screen on a non-final chunk: empty displayContent, exit 0", () => {
+  const { sandbox, temp } = setup("STAYED", "waiting on the retrieval agent");
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+  const r = display(temp, { session_id: "s1", message_id: "m1", turn_id: "t1",
+                            index: "0", delta: "some streaming chunk", final: "false" });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.hookSpecificOutput.displayContent, "");
+});
+
 test("default hide threshold is now 150 characters", () => {
   const { sandbox, temp } = setup("CLOSED");
   test.after(() => rmSync(sandbox, { recursive: true, force: true }));

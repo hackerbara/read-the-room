@@ -48,3 +48,45 @@ test("isFast matches by case-insensitive prefix", () => {
   assert.ok(isFast("Still open — asked, not delivered"));
   assert.ok(!isFast("Their words"));
 });
+
+test("freshness boundary: touch exactly freshAt turns old is not due; one turn older is", () => {
+  const atBoundary = [e("What they are doing right now", 4, "aaa")];
+  assert.deepEqual(
+    computeReasons({ entries: atBoundary, seedFileHash: "F0", fileHash: "F1", fileBytes: 900, turn: 10, cfg, snoozes: [] }),
+    [],
+  );
+  const pastBoundary = [e("What they are doing right now", 3, "aaa")];
+  assert.deepEqual(
+    computeReasons({ entries: pastBoundary, seedFileHash: "F0", fileHash: "F1", fileBytes: 900, turn: 10, cfg, snoozes: [] }).map(x => x.kind),
+    ["fresh"],
+  );
+});
+
+test("prune boundary: fileBytes exactly at pruneAt does not issue; a return at pruneAt fails strict verify", () => {
+  const entries = [e("What they are doing right now", 9, "aaa")];
+  assert.deepEqual(
+    computeReasons({ entries, seedFileHash: "F0", fileHash: "F1", fileBytes: 5000, turn: 10, cfg, snoozes: [] }),
+    [],
+  );
+  const reasons = [{ kind: "prune", baseline: 5100 }];
+  const verdict = verifyReturn({ reasons, entries, fileHash: "F1", fileBytes: 5000, affirm: [], pruneAt: 5000 });
+  assert.equal(verdict.pass, false);
+  assert.match(verdict.failures[0], /still 5000 bytes, limit 5000/);
+});
+
+test("a gone fast section counts for fresh, cannot pass by hash-move, and renderAges skips it", () => {
+  const goneEntries = [e("Still open — asked, not delivered", 2, "gone")];
+  const r = computeReasons({ entries: goneEntries, seedFileHash: "F0", fileHash: "F1", fileBytes: 900, turn: 20, cfg, snoozes: [] });
+  assert.deepEqual(r, [{ kind: "fresh", header: "Still open — asked, not delivered", baseline: "gone" }]);
+
+  const failed = verifyReturn({ reasons: r, entries: goneEntries, fileHash: "F1", fileBytes: 900, affirm: [], pruneAt: 5000 });
+  assert.equal(failed.pass, false, "a hash of 'gone' can never register as moved");
+  const passedByAffirm = verifyReturn({
+    reasons: r, entries: goneEntries, fileHash: "F1", fileBytes: 900,
+    affirm: ["Still open — asked, not delivered"], pruneAt: 5000,
+  });
+  assert.equal(passedByAffirm.pass, true);
+
+  const rendered = renderAges("## Still open — asked, not delivered\nbody\n", goneEntries, 20);
+  assert.equal(rendered, "## Still open — asked, not delivered\nbody\n");
+});

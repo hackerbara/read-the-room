@@ -142,18 +142,18 @@ Returns:
   and what would satisfy each. Framed as the room asking for upkeep
   before entry, not as a failed check.
 - **Key return:** per-reason verdicts. All due reasons must pass:
-  `setup`/`fresh` — the named sections' hashes moved since issue, or the
-  section appears in `affirm` (fresh only); `prune` — byte count now
-  strictly under the limit. Pass: gate OPEN, key deleted, satisfaction
-  logged with byte delta. Fail: a failed RETURN is a fumble — reasons
-  restated **with the nonce reprinted** (attempts=1); second failed
-  return → stand-down: gate OPEN, key deleted, logged. A bare re-call of
-  the door while a same-turn key is outstanding is NOT a fumble: it
-  re-presents the same nonce and reasons unchanged. (This is also the
-  compaction recovery path: if the nonce fell out of context, call the
-  door again and it comes back.) After a stand-down, that reason is
-  snoozed — not re-issued — for SNOOZE turns, so a stand-down buys
-  working room instead of an every-turn re-fire loop; the snooze is
+  `setup` — the file's hash moved at all since issue; `fresh` — the named
+  section's hash moved since issue, or the section appears in `affirm`;
+  `prune` — byte count now strictly under the limit. Pass: gate OPEN, key
+  deleted, satisfaction logged with byte delta. Fail: a failed RETURN is
+  a fumble — reasons restated **with the nonce reprinted** (attempts=1);
+  second failed return → stand-down: gate OPEN, key deleted, logged. A
+  bare re-call of the door while a same-turn key is outstanding is NOT a
+  fumble: it re-presents the same nonce and reasons unchanged. (This is
+  also the compaction recovery path: if the nonce fell out of context,
+  call the door again and it comes back.) After a stand-down, that
+  reason is snoozed — not re-issued — for SNOOZE turns, so a stand-down
+  buys working room instead of an every-turn re-fire loop; the snooze is
   logged.
 - **Stay:** gate STAYED, stamped as a legal end by the Stop hook. Stays
   consume turns, so freshness accrues during a stay streak and re-entry
