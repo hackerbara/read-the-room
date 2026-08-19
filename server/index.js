@@ -155,6 +155,21 @@ function renderStateV2(turn, fileHash, entries) {
     ...entries.map((e) => `${e.changed} ${e.affirmed || "-"} ${e.hash} ${e.header}`)].join("\n") + "\n";
 }
 
+// Live per-section hashes straight off the current file text — NOT the
+// `.state` sidecar, which is only refreshed by reinject.cjs at the start of
+// the NEXT turn. verifyReturn needs this: a same-turn edit to a flagged
+// section must register as "moved" right now, not one turn late.
+function splitSections(text) {
+  const out = [];
+  let cur = null;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("## ")) { if (cur) out.push(cur); cur = { header: line.slice(3).trim(), body: [] }; }
+    else if (cur) cur.body.push(line);
+  }
+  if (cur) out.push(cur);
+  return out.map((s) => ({ header: s.header, hash: createHash("sha256").update(s.body.join("\n")).digest("hex") }));
+}
+
 function writeAtomic(p, content) {
   const tmp = `${p}.tmp${process.pid}`;
   writeFileSync(tmp, content);
@@ -467,9 +482,14 @@ listened, whatever you meant by it, and that is how trust goes.`;
     const sameTurn = held && held.turn === turnStr;
 
     if (sameTurn && args.key && args.key === held.nonce) {
-      // A RETURN: verify.
+      // A RETURN: verify against a LIVE re-split+re-hash of the current
+      // file text, not the `.state` sidecar — `.state` is only refreshed
+      // by reinject.cjs at the start of the NEXT turn, so reusing it here
+      // would mean a same-turn edit to the named section could never
+      // register as "moved" and only `affirm` could ever satisfy fresh.
+      const liveEntries = splitSections(orientationText);
       const verdict = verifyReturn({
-        reasons: held.reasons, entries, fileHash: nowHash, fileBytes,
+        reasons: held.reasons, entries: liveEntries, fileHash: nowHash, fileBytes,
         affirm: args.affirm, pruneAt: cfg.pruneAt,
       });
       if (verdict.pass) {
@@ -479,18 +499,23 @@ listened, whatever you meant by it, and that is how trust goes.`;
           // fails open
         }
         writeGate(sessionId, "OPEN");
+        let renderEntries = entries;
         if (verdict.affirmed.length) {
-          const updated = entries.map((e) =>
+          renderEntries = entries.map((e) =>
             verdict.affirmed.includes(e.header) ? { ...e, affirmed: turnStr } : e);
           try {
-            writeAtomic(stateFile, renderStateV2(state.turn || turnStr, state.hash || nowHash, updated));
+            writeAtomic(stateFile, renderStateV2(state.turn || turnStr, state.hash || nowHash, renderEntries));
           } catch {
             // fails open — the affirm still counted for this turn's verdict
           }
           for (const h of verdict.affirmed) appendLedger(ledgerFile, turnStr, "affirmed", null, h);
         }
         appendLedger(ledgerFile, turnStr, "satisfied", byteDelta(held, fileBytes), reasonText(held.reasons));
-        return text(`${orientationWithAges}${statsCore}\nKey returned. The door is open — say the thing, once, addressed to them.`);
+        // Re-render ages from renderEntries, not the up-front
+        // orientationWithAges — this turn's affirm stamps must show in
+        // the same response, not one door call later.
+        const freshAges = renderAges(orientationText, renderEntries, count === null ? 0 : count);
+        return text(`${freshAges}${statsCore}\nKey returned. The door is open — say the thing, once, addressed to them.`);
       }
       held.attempts += 1;
       const maxReruns = numEnv("CLAUDE_ORIENTATION_STOP_MAX_RERUNS", 2);

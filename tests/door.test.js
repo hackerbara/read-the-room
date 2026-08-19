@@ -42,15 +42,21 @@ function renderStateV2(turn, fileHash, entries) {
 // turn counter, a CLOSED gate at that turn, the state v2 sidecar, and the
 // seed file. `seedText` is what session-start originally wrote (what setup
 // compares against); `currentText` (default: same as seedText, i.e. a
-// virgin file) is what's on disk now.
-function seedSession(base, sid, { seedText, currentText, turn, changedAt = 0 }) {
+// virgin file) is what's on disk now. `changedAt` stamps every section the
+// same; `changedAtBySection` (parallel array, same order as `## ` headers
+// appear in `currentText`) overrides it per section, for fixtures where
+// only some fast sections are meant to be stale.
+function seedSession(base, sid, { seedText, currentText, turn, changedAt = 0, changedAtBySection }) {
   currentText = currentText ?? seedText;
   const orientPath = join(base, `${sid}.orientation.txt`);
   writeFileSync(orientPath, currentText);
 
   const curHash = sha256(currentText);
   const curSections = splitSections(currentText);
-  const entries = curSections.map((s) => ({ changed: String(changedAt), affirmed: null, hash: s.hash, header: s.header }));
+  const entries = curSections.map((s, i) => ({
+    changed: String(changedAtBySection ? changedAtBySection[i] : changedAt),
+    affirmed: null, hash: s.hash, header: s.header,
+  }));
   writeFileSync(join(base, `${sid}.state`), renderStateV2(String(changedAt), curHash, entries));
 
   const seedHash = sha256(seedText);
@@ -157,6 +163,70 @@ test("two failed returns stand the reason down: gate OPEN, key gone, snoozed, bo
   assert.match(ledger, /^1 stood-down /m);
   assert.match(ledger, /^1 snoozed /m);
   assert.match(readFileSync(join(base, `${sid}.snooze`), "utf8"), /^7 setup$/m); // turn 1 + default SNOOZE 6
+});
+
+test("a fresh reason is satisfied by a live same-turn edit to the named section, not just affirm", async () => {
+  const { dir, temp, base } = sandbox("rtr-door-fresh-edit-");
+  test.after(() => rmSync(dir, { recursive: true, force: true }));
+  const sid = "door-fresh-edit-session";
+  const currentText = "## What they are doing right now\nworking on the deploy script\n## What they have not seen\nbar\n";
+  // First section stale since turn 0 (due at turn 10, freshAt default 6);
+  // second touched last turn (not due) — isolates the key to one reason.
+  const { orientPath } = seedSession(base, sid, {
+    seedText: TEMPLATE, currentText, turn: 10, changedAtBySection: [0, 9],
+  });
+
+  const { client, transport } = startClient(temp, sid);
+  test.after(() => client.close());
+  await client.connect(transport);
+
+  const first = await call(client);
+  assert.match(first, /- fresh: "What they are doing right now"/);
+  assert.ok(!first.includes('"What they have not seen"'), "only the stale section should be keyed");
+  const nonce = readFileSync(join(base, `${sid}.key`), "utf8").split(/\s+/)[0];
+
+  // A real, same-turn edit to the named section — no affirm at all. Before
+  // the fix, verifyReturn reused the turn-stale `.state` snapshot for this
+  // check, so this edit could never register as "moved" and only `affirm`
+  // could ever satisfy a fresh reason.
+  writeFileSync(orientPath, currentText.replace(
+    "working on the deploy script", "working on the deploy script and the release notes"));
+
+  const res = await call(client, { key: nonce });
+  assert.match(res, /Key returned\. The door is open/);
+  assert.ok(!existsSync(join(base, `${sid}.key`)), "the key file is deleted on a satisfied return");
+  assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "OPEN 10");
+  assert.match(readFileSync(join(base, `${sid}.ledger`), "utf8"), /^10 satisfied /m);
+});
+
+test("affirm alone (no edit) satisfies a fresh reason: sidecar stamped, ledgered, and shown in the same response", async () => {
+  const { dir, temp, base } = sandbox("rtr-door-fresh-affirm-");
+  test.after(() => rmSync(dir, { recursive: true, force: true }));
+  const sid = "door-fresh-affirm-session";
+  const currentText = "## What they are doing right now\nworking on the deploy script\n## What they have not seen\nbar\n";
+  seedSession(base, sid, { seedText: TEMPLATE, currentText, turn: 10, changedAtBySection: [0, 9] });
+
+  const { client, transport } = startClient(temp, sid);
+  test.after(() => client.close());
+  await client.connect(transport);
+
+  await call(client); // issues the fresh key for "What they are doing right now"
+  const nonce = readFileSync(join(base, `${sid}.key`), "utf8").split(/\s+/)[0];
+
+  const res = await call(client, { key: nonce, affirm: ["What they are doing right now"] });
+  assert.match(res, /Key returned\. The door is open/);
+  // The just-affirmed stamp must show in THIS response, not one door call
+  // later — the age rendering has to be recomputed after the write-back.
+  assert.match(res, /## What they are doing right now \(changed turn 0, 10 ago; affirmed turn 10\)/);
+  assert.ok(!existsSync(join(base, `${sid}.key`)));
+  assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "OPEN 10");
+
+  const stateAfter = readFileSync(join(base, `${sid}.state`), "utf8");
+  assert.match(stateAfter, /^0 10 \S+ What they are doing right now$/m, "sidecar gains the affirmed turn stamp");
+
+  const ledger = readFileSync(join(base, `${sid}.ledger`), "utf8");
+  assert.match(ledger, /^10 affirmed - What they are doing right now$/m);
+  assert.match(ledger, /^10 satisfied /m);
 });
 
 test("stay lands as STAYED and writes the staynote, tolerating a missing orientation file", async () => {

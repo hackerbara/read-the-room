@@ -111,7 +111,7 @@ existing files. New:
   call; the *key* does not — a stale-turn key file is ignored and a
   fresh nonce issued. Deleted on successful return or stand-down.
 - `<sid>.ledger` — append-only, one line per key event:
-  `<turn> <event> <reason> [<bytes-delta>]` with events `issued`,
+  `<turn> <event> <delta|-> <reason text…>` with events `issued`,
   `satisfied`, `affirmed`, `fumbled`, `stood-down`, `lapsed` (turn ended
   KEYED), `stayed-keyed` (stayed while a key was due), `snoozed`.
   Satisfactions record the byte delta of the change that satisfied them
