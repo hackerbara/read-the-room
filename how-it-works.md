@@ -38,7 +38,7 @@ flowchart TD
     G --> H
     H --> KQ{"Is upkeep due?"}
     KQ -->|"no"| I["The orientation file<br/>comes back"]
-    KQ -->|"yes"| KY["A key comes back instead:<br/>update or affirm the file,<br/>then return the key"]
+    KQ -->|"yes"| KY["The file comes back with a key:<br/>update or affirm what it names,<br/>then return the key"]
     KY --> H
     I --> J{"Claude judges:<br/>does the draft still fit?"}
     J -->|"no"| C
@@ -107,8 +107,13 @@ Whether the staging consumers count.
 ```
 
 Each section header comes back stamped with its own age — `(changed turn 41,
-9 ago)` — along with how much Claude wrote to itself this turn and the file's
-size in bytes.
+9 ago)` — along with how much Claude wrote to itself this turn. The file's
+size appears only once it matters: past the pruning limit, as part of the
+key's reasons.
+
+The periodic staleness nudges that used to fire at turn counts are gone —
+the key replaced them, and their removal trims what gets injected into
+every turn.
 
 ---
 
@@ -118,8 +123,9 @@ Three conditions make the door ask for upkeep before it opens. Each hands
 back a key instead of opening; doing the upkeep and returning the key is
 what opens the door.
 
-- **Setup** — the file is still the blank template. Fires on the first
-  crossing of a session, so the room gets set up before the first reply.
+- **Setup** — the file is still the blank template. Usually that means the
+  first crossing of a session; it keeps asking on later crossings if the
+  file stays untouched, so the room gets set up before anything else.
 - **Freshness** — a watched section has gone more than 6 turns untouched.
   Updating it counts; so does affirming it — "I re-read this just now and
   it still holds."
@@ -128,8 +134,9 @@ what opens the door.
 
 The checks are content-blind throughout: a hash moved, a byte count fell.
 Nothing reads what the words say — the design rule is *any real change
-counts*. Every key event — issued, satisfied, affirmed, fumbled — lands in
-a small ledger file, so cheap compliance is at least visible compliance.
+counts*. Every key event — issued, satisfied, affirmed, fumbled, stood
+down, snoozed, and a turn that ends with a key unreturned — lands in a
+small ledger file, so cheap compliance is at least visible compliance.
 
 If the upkeep fumbles twice, the door stands down: it opens anyway, the
 miss goes on the ledger, and that reason rests for 6 turns. Failing toward
