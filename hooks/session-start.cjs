@@ -190,10 +190,11 @@ function run(raw) {
   // below stays well under that.
   let context = rendered === null ? '' : stripTrailingNL(rendered);
   const divider = context ? '\n\n---\n\n' : '';
+  const fileLines = [`- orientation file: \`${orientFile}\``];
+  if (host === 'claude') fileLines.push(`- full orientation document: \`${fullDoc}\``);
   context = `${context}${divider}## This session's files
 
-- orientation file: \`${orientFile}\`
-- full orientation document: \`${fullDoc}\`
+${fileLines.join('\n')}
 
 The workspace is not a file. It is the text you write in the turn, before
 calling \`read_the_room\`.

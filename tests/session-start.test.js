@@ -3,12 +3,17 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const pluginRoot = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const channelStart = "<!-- read-the-room:channel:start -->";
 const channelEnd = "<!-- read-the-room:channel:end -->";
+const claudeDocumentDigests = {
+  "orientation.md": "7e588fe0f37d2d4c0b8b5db097cdd124227378bd474a4c4548ea6368e653218a",
+  "orientation-brief.md": "0e97f7646b0513fa486a99f3af6b3a1fd44d4fef2bee5d5642b16215f694714a",
+};
 
 function sandbox(t) {
   const dir = mkdtempSync(join(tmpdir(), "read-the-room-test-"));
@@ -59,11 +64,6 @@ function context(result) {
   return JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
 }
 
-function withoutChannelMarkers(text) {
-  const pattern = /<!-- read-the-room:channel:start -->\r?\n([\s\S]*?)\r?\n<!-- read-the-room:channel:end -->/g;
-  return text.replace(pattern, (_, body) => body).replace(/\n+$/, "");
-}
-
 test("Codex receives truthful full and compact workspace language", (t) => {
   const box = sandbox(t);
 
@@ -85,10 +85,17 @@ test("Codex receives truthful full and compact workspace language", (t) => {
     assert.doesNotMatch(output, /display may replace it with (?:a )?(?:short )?marker/i);
     assert.doesNotMatch(output, /nothing is hidden/i);
     assert.doesNotMatch(output, /ctrl\+O/i);
+    assert.doesNotMatch(output, /full orientation document:/i);
+    assert.doesNotMatch(
+      output,
+      new RegExp(join(box.dir, `plugin-data-${source}`, source === "startup"
+        ? "orientation.md"
+        : "orientation-brief.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
   }
 });
 
-test("Claude strips every channel marker without changing either bundled document", (t) => {
+test("Claude rendered documents match pinned pre-marker digests", (t) => {
   const box = sandbox(t);
 
   for (const [source, name] of [["startup", "orientation.md"], ["resume", "orientation-brief.md"]]) {
@@ -99,8 +106,7 @@ test("Claude strips every channel marker without changing either bundled documen
       source,
     }));
     const document = output.split("\n\n---\n\n## This session's files")[0];
-    const bundled = readFileSync(join(pluginRoot, "docs", name), "utf8");
-    assert.equal(document, withoutChannelMarkers(bundled));
+    assert.equal(createHash("sha256").update(document).digest("hex"), claudeDocumentDigests[name]);
     assert.doesNotMatch(output, /read-the-room:channel/);
     assert.match(output, /The door\. It opens for you|the\s+door has a few small rules/i);
     assert.match(output, /Generation is free\. Delivery is the cost\./);
