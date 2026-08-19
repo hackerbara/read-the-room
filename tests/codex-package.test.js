@@ -66,10 +66,17 @@ test("Codex MCP config uses the keyed plugin-relative bundle and selects Codex",
   assert.doesNotMatch(readFileSync(join(root, "codex.mcp.json"), "utf8"), /server\/index\.js|\$\{PLUGIN_ROOT\}/);
 });
 
-test("git includes the Codex manifest", () => {
-  const result = spawnSync("git", ["check-ignore", ".codex-plugin/plugin.json"], {
+test("git tracks the Codex manifest through an explicit ignore exception", () => {
+  const tracked = spawnSync("git", ["ls-files", "--error-unmatch", ".codex-plugin/plugin.json"], {
     cwd: root,
     encoding: "utf8",
   });
-  assert.notEqual(result.status, 0, result.stdout || result.stderr);
+  assert.equal(tracked.status, 0, tracked.stdout || tracked.stderr);
+
+  const ignored = spawnSync("git", ["check-ignore", "--no-index", "-v", ".codex-plugin/plugin.json"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.equal(ignored.status, 0, ignored.stdout || ignored.stderr);
+  assert.match(ignored.stdout, /^\.gitignore:\d+:!/);
 });
