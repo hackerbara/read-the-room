@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -96,6 +96,34 @@ test("Codex receives truthful full and compact workspace language", (t) => {
       new RegExp(join(box.dir, `plugin-data-${source}`).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
+});
+
+test("explicit Codex SessionStart ignores an ambient Claude session without payload identity", (t) => {
+  const box = sandbox(t);
+  const result = runSessionStart({
+    ...box,
+    sessionId: undefined,
+    host: "codex",
+    env: { CLAUDE_CODE_SESSION_ID: "ambient-claude-session" },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    existsSync(join(box.temp, "claude-orientation", "ambient-claude-session.orientation.txt")),
+    false,
+  );
+
+  const claude = runSessionStart({
+    ...box,
+    sessionId: undefined,
+    env: { CLAUDE_CODE_SESSION_ID: "ambient-claude-session" },
+  });
+  assert.notEqual(claude.stdout, "", "Claude keeps its environment fallback");
+  assert.equal(
+    existsSync(join(box.temp, "claude-orientation", "ambient-claude-session.orientation.txt")),
+    true,
+  );
 });
 
 test("Claude rendered documents match pinned pre-marker digests", (t) => {

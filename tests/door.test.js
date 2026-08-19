@@ -77,7 +77,10 @@ function sandbox(prefix) {
   return { dir, temp, base };
 }
 
-function startClient(temp, sessionId, extraEnv = {}, host = "claude") {
+function startClient(temp, sessionId, extraEnv = {}, host = "claude", codexPpidPointer = true) {
+  if (host === "codex" && codexPpidPointer) {
+    writeFileSync(join(temp, "claude-orientation", `current-session.ppid${process.pid}`), sessionId);
+  }
   const entry = process.env.DOOR_SERVER_ENTRY || join(pluginRoot, "server", "index.js");
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -210,6 +213,56 @@ test("Codex response matrix omits Claude display state while preserving keyed tr
   } finally {
     await stoodDownClient.client.close();
     rmSync(stoodDown.dir, { recursive: true, force: true });
+  }
+});
+
+test("Codex MCP ignores ambient Claude identity and uses only a distinct live pointer", async () => {
+  const pointed = sandbox("rtr-door-codex-pointer-");
+  const claudeSid = "ambient-claude-session";
+  const codexSid = "pointed-codex-session";
+  seedSession(pointed.base, claudeSid, {
+    seedText: TEMPLATE,
+    currentText: TEMPLATE.replace("foo", "Claude-only fact"),
+    turn: 5,
+    changedAt: 5,
+  });
+  seedSession(pointed.base, codexSid, {
+    seedText: TEMPLATE,
+    currentText: TEMPLATE.replace("foo", "Codex-only fact"),
+    turn: 2,
+    changedAt: 2,
+  });
+  writeFileSync(join(pointed.base, "current-session"), codexSid);
+  const pointedClient = startClient(pointed.temp, claudeSid, {}, "codex", false);
+  try {
+    await pointedClient.client.connect(pointedClient.transport);
+    const response = await call(pointedClient.client);
+    assert.match(response, /Codex-only fact/);
+    assert.doesNotMatch(response, /Claude-only fact/);
+    assert.equal(readFileSync(join(pointed.base, `${codexSid}.gate`), "utf8"), "OPEN 2");
+    assert.equal(readFileSync(join(pointed.base, `${claudeSid}.gate`), "utf8"), "CLOSED 5");
+  } finally {
+    await pointedClient.client.close();
+    rmSync(pointed.dir, { recursive: true, force: true });
+  }
+
+  const unpointed = sandbox("rtr-door-codex-unpointed-");
+  seedSession(unpointed.base, claudeSid, {
+    seedText: TEMPLATE,
+    currentText: TEMPLATE.replace("foo", "Claude-only fact"),
+    turn: 5,
+    changedAt: 5,
+  });
+  const unpointedClient = startClient(unpointed.temp, claudeSid, {}, "codex", false);
+  try {
+    await unpointedClient.client.connect(unpointedClient.transport);
+    const response = await call(unpointedClient.client, { stay: true, note: "must not mutate Claude" });
+    assert.match(response, /No active Codex session/);
+    assert.equal(readFileSync(join(unpointed.base, `${claudeSid}.gate`), "utf8"), "CLOSED 5");
+    assert.equal(existsSync(join(unpointed.base, `${claudeSid}.staynote`)), false);
+  } finally {
+    await unpointedClient.client.close();
+    rmSync(unpointed.dir, { recursive: true, force: true });
   }
 });
 

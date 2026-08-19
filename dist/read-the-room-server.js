@@ -21277,6 +21277,7 @@ function hasState(id) {
   return existsSync(join(BASE, `${id}.orientation.txt`));
 }
 function resolveSessionId() {
+  const ambientClaudeId = plausibleSessionId(process.env.CLAUDE_CODE_SESSION_ID) ? process.env.CLAUDE_CODE_SESSION_ID : null;
   const ppid = process.ppid;
   if (Number.isInteger(ppid) && ppid > 0) {
     const byPpid = readPointer(join(BASE, `current-session.ppid${ppid}`));
@@ -21290,6 +21291,9 @@ function resolveSessionId() {
   } catch {
   }
   pointers.push(readPointer(join(BASE, "current-session")));
+  if (host === "codex") {
+    return pointers.find((id) => id && id !== ambientClaudeId && hasState(id)) || null;
+  }
   const own = process.env.CLAUDE_CODE_SESSION_ID;
   const ownId = plausibleSessionId(own) ? own : null;
   if (ownId && hasState(ownId)) {
@@ -21490,6 +21494,9 @@ server.registerTool(
   },
   async (args) => {
     const sessionId = resolveSessionId();
+    if (!sessionId) {
+      return text("No active Codex session could be resolved. The door is failing open without changing session state.");
+    }
     const orientFile = join(BASE, `${sessionId}.orientation.txt`);
     const turnsFile = join(BASE, `${sessionId}.turns`);
     const stateFile = join(BASE, `${sessionId}.state`);

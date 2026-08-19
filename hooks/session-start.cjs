@@ -160,7 +160,8 @@ function run(raw) {
   let source = jqStr(input.source, 'startup');
   if (!source) source = 'startup';
 
-  if (!sessionId) sessionId = process.env.CLAUDE_CODE_SESSION_ID || 'unknown';
+  if (!sessionId && host === 'claude') sessionId = process.env.CLAUDE_CODE_SESSION_ID || '';
+  if (!sessionId) return;
 
   const base = path.join(os.tmpdir(), 'claude-orientation');
   try { fs.mkdirSync(base, { recursive: true }); } catch { return; }

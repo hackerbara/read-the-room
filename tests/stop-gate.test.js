@@ -142,6 +142,34 @@ test("Codex Stop never creates Claude display-coupling files", () => {
   }
 });
 
+test("explicit Codex Stop ignores an ambient Claude session without payload identity", () => {
+  const { sandbox, temp, base } = seed("CLOSED");
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+
+  const result = stop(
+    temp,
+    undefined,
+    "x".repeat(101),
+    { CLAUDE_CODE_SESSION_ID: "s1" },
+    "false",
+    "codex",
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.equal(readFileSync(join(base, "s1.gate"), "utf8"), "CLOSED 5");
+  assert.equal(existsSync(join(base, "s1.codex-reruns")), false);
+
+  const claude = stop(
+    temp,
+    undefined,
+    "x".repeat(101),
+    { CLAUDE_CODE_SESSION_ID: "s1" },
+  );
+  assert.equal(JSON.parse(claude.stdout).hookSpecificOutput.hookEventName, "Stop");
+  assert.equal(readFileSync(join(base, "s1.suppressed"), "utf8"), "1");
+});
+
 test("Codex KEYED shares the rerun counter, ignores MIN_CHARS, and records one lapse per logical turn", () => {
   const { sandbox, temp, base } = seed("CLOSED", {
     "s1.codex-reruns": "5 1", "s1.suppressed": "8",

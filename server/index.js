@@ -46,7 +46,7 @@ function readPointer(path) {
   }
 }
 
-// Session resolution: this server keeps the CLAUDE_CODE_SESSION_ID it was
+// Claude session resolution keeps the CLAUDE_CODE_SESSION_ID this server was
 // spawned with, but hooks get a fresh one each call, and /clear changes it —
 // so keying on our own id breaks after the first /clear. Concurrent sessions
 // can also share a cwd, so cwd- or recency-based keys can collapse two
@@ -67,6 +67,10 @@ function hasState(id) {
 }
 
 function resolveSessionId() {
+  const ambientClaudeId = plausibleSessionId(process.env.CLAUDE_CODE_SESSION_ID)
+    ? process.env.CLAUDE_CODE_SESSION_ID
+    : null;
+
   // Primary: pid-keyed pointer (see above); trusted without corroboration.
   const ppid = process.ppid;
   if (Number.isInteger(ppid) && ppid > 0) {
@@ -74,8 +78,7 @@ function resolveSessionId() {
     if (byPpid && hasState(byPpid)) return byPpid;
   }
 
-  // Fallback: pid pointer missing (old reinject.sh, no $PPID) or has no
-  // state yet.
+  // Fallback: pid pointer missing or has no state yet.
   const pointers = [];
   try {
     const cwd = realpathSync(process.cwd());
@@ -85,6 +88,10 @@ function resolveSessionId() {
     // no cwd, no cwd-keyed pointer. The global one still applies.
   }
   pointers.push(readPointer(join(BASE, "current-session")));
+
+  if (host === "codex") {
+    return pointers.find((id) => id && id !== ambientClaudeId && hasState(id)) || null;
+  }
 
   const own = process.env.CLAUDE_CODE_SESSION_ID;
   const ownId = plausibleSessionId(own) ? own : null;
@@ -343,6 +350,9 @@ server.registerTool(
   },
   async (args) => {
     const sessionId = resolveSessionId();
+    if (!sessionId) {
+      return text("No active Codex session could be resolved. The door is failing open without changing session state.");
+    }
     const orientFile = join(BASE, `${sessionId}.orientation.txt`);
     const turnsFile = join(BASE, `${sessionId}.turns`);
     const stateFile = join(BASE, `${sessionId}.state`);

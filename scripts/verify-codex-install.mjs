@@ -203,7 +203,7 @@ export function withTimeout(operation, label, milliseconds = MCP_TIMEOUT_MS) {
   return Promise.race([operation, timeout]).finally(() => clearTimeout(timer));
 }
 
-export function resolveHookLaunch(commandLine, installedPath, source) {
+export function resolveHookLaunch(commandLine, installedPath, source, projectCwd) {
   if (typeof commandLine !== "string") fail("Codex hook command must be a string");
   const match = commandLine.match(/^node\s+"\$\{PLUGIN_ROOT\}\/([^"\r\n]+)"\s+--host\s+codex$/);
   if (!match) fail("Codex hook command must use node and one PLUGIN_ROOT-relative installed script");
@@ -211,7 +211,7 @@ export function resolveHookLaunch(commandLine, installedPath, source) {
     label: "Codex hook script",
     source,
   });
-  return { command: "node", args: [script, "--host", "codex"], cwd: realpathSync(source) };
+  return { command: "node", args: [script, "--host", "codex"], cwd: realpathSync(projectCwd) };
 }
 
 export function resolveMcpLaunch(mcp, installedPath, source) {
@@ -255,7 +255,8 @@ export async function verify() {
     const codexHome = join(work, "codex-home");
     const pluginData = join(work, "plugin-data");
     const temp = join(work, "tmp");
-    for (const directory of [source, codexHome, pluginData, temp]) mkdirSync(directory, { recursive: true });
+    const project = join(work, "unrelated-project");
+    for (const directory of [source, codexHome, pluginData, temp, project]) mkdirSync(directory, { recursive: true });
 
     const files = copyTrackedFiles(source);
     scanTrackedReleaseFiles(source, files);
@@ -297,12 +298,16 @@ export async function verify() {
     for (const event of ["SessionStart", "UserPromptSubmit", "Stop"]) {
       const hook = hookManifest.hooks?.[event]?.[0]?.hooks?.[0];
       assert.equal(hook?.type, "command", `cached ${event} must be a command hook`);
-      hookLaunch[event] = resolveHookLaunch(hook.command, installedPath, source);
+      hookLaunch[event] = resolveHookLaunch(hook.command, installedPath, source, project);
+      assert.equal(isWithin(root, hookLaunch[event].cwd), false,
+        `cached ${event} cwd must not alias the development checkout`);
+      assert.equal(isWithin(source, hookLaunch[event].cwd), false,
+        `cached ${event} cwd must not alias the marketplace source`);
     }
 
     const runtimeEnv = hookEnv({ codexHome, pluginRoot: installedPath, pluginData, temp });
     const sessionId = "clean-install-session";
-    const hookInput = { session_id: sessionId, source: "startup", cwd: source };
+    const hookInput = { session_id: sessionId, source: "startup", cwd: project };
     const sessionStart = runCachedHook(hookLaunch.SessionStart, "SessionStart", hookInput, runtimeEnv);
     assert.ok(sessionStart?.hookSpecificOutput?.additionalContext, "SessionStart must emit context");
     assert.match(sessionStart.hookSpecificOutput.additionalContext, /ordinary assistant language streams visibly/i);

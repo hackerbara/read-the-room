@@ -113,7 +113,9 @@ test("manifest-derived hook and MCP launches resolve inside the cached plugin", 
   const work = mkdtempSync(join(tmpdir(), "read-the-room-launch-safe-"));
   const installed = join(work, "installed");
   const source = join(work, "source");
+  const project = join(work, "unrelated-project");
   mkdirSync(source);
+  mkdirSync(project);
   mkdirSync(join(installed, "hooks"), { recursive: true });
   mkdirSync(join(installed, "dist"), { recursive: true });
   writeFileSync(join(installed, "hooks", "session-start.cjs"), "");
@@ -123,8 +125,11 @@ test("manifest-derived hook and MCP launches resolve inside the cached plugin", 
       'node "${PLUGIN_ROOT}/hooks/session-start.cjs" --host codex',
       installed,
       source,
+      project,
     );
-    assert.equal(hook.cwd, realpathSync(source));
+    assert.equal(hook.cwd, realpathSync(project));
+    assert.notEqual(hook.cwd, realpathSync(source));
+    assert.notEqual(hook.cwd, root);
     assert.deepEqual(hook.args, [join(realpathSync(installed), "hooks", "session-start.cjs"), "--host", "codex"]);
 
     const mcp = resolveMcpLaunch(

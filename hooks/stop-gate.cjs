@@ -96,8 +96,8 @@ function run(raw) {
   if (typeof input !== 'object' || input === null) input = {};
 
   let sessionId = jqStr(input.session_id, '');
-  if (!sessionId) sessionId = process.env.CLAUDE_CODE_SESSION_ID || 'unknown';
-  if (sessionId === 'unknown') return;
+  if (!sessionId && host === 'claude') sessionId = process.env.CLAUDE_CODE_SESSION_ID || '';
+  if (!sessionId) return;
 
   const base = path.join(os.tmpdir(), 'claude-orientation');
   const gateFile = path.join(base, `${sessionId}.gate`);
