@@ -6,6 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 function jqStr(v, fb) {
   if (v === undefined || v === null || v === false) return fb;
@@ -22,6 +23,28 @@ function readable(p) {
 // it captures; both CONTEXT=$(cat ...) and LIVE=$(head -c ...) rely on this.
 function stripTrailingNL(s) {
   return s.replace(/\n+$/, '');
+}
+
+function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
+
+function splitSections(text) {
+  const out = []; let cur = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('## ')) { if (cur) out.push(cur); cur = { header: line.slice(3).trim(), body: [] }; }
+    else if (cur) cur.body.push(line);
+  }
+  if (cur) out.push(cur);
+  return out.map(s => ({ header: s.header, hash: sha256(s.body.join('\n')) }));
+}
+
+function renderStateV2(turn, fileHash, entries) {
+  return [`${turn} ${fileHash}`,
+    ...entries.map(e => `${e.changed} ${e.affirmed || '-'} ${e.hash} ${e.header}`)].join('\n') + '\n';
+}
+
+function writeAtomic(p, content) {
+  const tmp = `${p}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, content); fs.renameSync(tmp, p);
 }
 
 // Copies name from srcDir to destDir if absent at dest. Never overwrites.
@@ -105,7 +128,14 @@ function run(raw) {
   if (!fs.existsSync(orientFile) && readable(template)) {
     try {
       const tpl = fs.readFileSync(template, 'utf8');
-      fs.writeFileSync(orientFile, tpl.split('{{SESSION_ID}}').join(sessionId));
+      const seeded = tpl.split('{{SESSION_ID}}').join(sessionId);
+      fs.writeFileSync(orientFile, seeded);
+      const sections = splitSections(seeded);
+      const fileHash = sha256(seeded);
+      const entries = sections.map(s => ({ changed: '0', affirmed: null, hash: s.hash, header: s.header }));
+      writeAtomic(path.join(base, `${sessionId}.state`), renderStateV2('0', fileHash, entries));
+      writeAtomic(path.join(base, `${sessionId}.seed`),
+        [fileHash, ...sections.map(s => `${s.hash} ${s.header}`)].join('\n') + '\n');
     } catch {}
   }
   if (!fs.existsSync(turnsFile)) {
