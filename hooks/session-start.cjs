@@ -68,12 +68,12 @@ function copyTemplateIfMissing(destDir, srcDir, name) {
   } catch {}
 }
 
-// Docs directory, in priority order: CLAUDE_PLUGIN_DATA (persists across
-// plugin updates) > legacy ~/.claude/orientation (non-plugin install) >
-// CLAUDE_PLUGIN_ROOT/docs (plugin install, no data dir available).
-function resolveDocsDir(legacyHome) {
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA;
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+// Docs directory, in priority order: host data (persists across plugin
+// updates) > host root > the legacy Claude orientation directory.
+function resolveDocsDir(host, legacyHome) {
+  const codex = host === 'codex';
+  const pluginData = process.env[codex ? 'PLUGIN_DATA' : 'CLAUDE_PLUGIN_DATA'];
+  const pluginRoot = process.env[codex ? 'PLUGIN_ROOT' : 'CLAUDE_PLUGIN_ROOT'];
   if (pluginData) {
     if (pluginRoot) {
       const srcDir = path.join(pluginRoot, 'docs');
@@ -89,6 +89,14 @@ function resolveDocsDir(legacyHome) {
     };
   }
   if (!pluginRoot) {
+    if (codex) {
+      return {
+        dir: legacyHome,
+        fullName: 'orientation.md',
+        briefName: 'orientation-brief.md',
+        templateName: 'orientation-template.txt',
+      };
+    }
     return {
       dir: legacyHome,
       fullName: 'ORIENTATION.md',
@@ -104,14 +112,29 @@ function resolveDocsDir(legacyHome) {
   };
 }
 
+function hostFromArgs(argv) {
+  const index = argv.indexOf('--host');
+  return index >= 0 && argv[index + 1] === 'codex' ? 'codex' : 'claude';
+}
+
+function renderChannels(text, host, replacement = '') {
+  const pattern = /<!-- read-the-room:channel:start -->\r?\n([\s\S]*?)\r?\n<!-- read-the-room:channel:end -->/g;
+  const blocks = [...text.matchAll(pattern)];
+  if (blocks.length === 0) return host === 'claude' ? text : null;
+  if (host === 'claude') return text.replace(pattern, (_, body) => body);
+  const replacements = [...replacement.matchAll(pattern)];
+  if (replacements.length !== blocks.length) return null;
+  let index = 0;
+  return text.replace(pattern, () => replacements[index++][1]);
+}
+
 function run(raw) {
+  const host = hostFromArgs(process.argv.slice(2));
   const orientHome = path.join(os.homedir(), '.claude', 'orientation');
-  const docs = resolveDocsDir(orientHome);
+  const docs = resolveDocsDir(host, orientHome);
   const fullDoc = path.join(docs.dir, docs.fullName);
   const briefDoc = path.join(docs.dir, docs.briefName);
   const template = path.join(docs.dir, docs.templateName);
-  let text = fullDoc;
-  if (!readable(text)) return;
 
   let input;
   try { input = JSON.parse(raw); } catch { input = {}; }
@@ -124,7 +147,6 @@ function run(raw) {
   let source = jqStr(input.source, 'startup');
   if (!source) source = 'startup';
 
-  if (source !== 'startup' && readable(briefDoc)) text = briefDoc;
   if (!sessionId) sessionId = process.env.CLAUDE_CODE_SESSION_ID || 'unknown';
 
   const base = path.join(os.tmpdir(), 'claude-orientation');
@@ -150,14 +172,25 @@ function run(raw) {
     try { fs.writeFileSync(turnsFile, '0'); } catch {}
   }
 
+  let text = fullDoc;
+  if (source !== 'startup' && readable(briefDoc)) text = briefDoc;
+  let sourceText = '';
+  try { sourceText = fs.readFileSync(text, 'utf8'); } catch {
+    if (host === 'claude') return;
+  }
+  let replacement = '';
+  if (host === 'codex') {
+    const root = process.env.PLUGIN_ROOT;
+    const channelName = text === briefDoc ? 'codex-channel-brief.md' : 'codex-channel.md';
+    try { replacement = fs.readFileSync(path.join(root, 'docs', channelName), 'utf8'); } catch {}
+  }
+  const rendered = renderChannels(sourceText, host, replacement);
+
   // Hook stdout is truncated at 102400 bytes; the text plus the live slice
   // below stays well under that.
-  let context = stripTrailingNL(fs.readFileSync(text, 'utf8'));
-  context = `${context}
-
----
-
-## This session's files
+  let context = rendered === null ? '' : stripTrailingNL(rendered);
+  const divider = context ? '\n\n---\n\n' : '';
+  context = `${context}${divider}## This session's files
 
 - orientation file: \`${orientFile}\`
 - full orientation document: \`${fullDoc}\`
