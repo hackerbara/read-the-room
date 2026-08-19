@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,4 +39,59 @@ test("seeding writes state v2 with one sidecar line per template section, plus a
   const seed = readFileSync(join(base, `${sid}.seed`), "utf8").trimEnd().split("\n");
   assert.match(seed[0], /^[0-9a-f]{64}$/);
   assert.equal(seed.length, sidecar.length + 1);
+});
+
+function promptTurn(temp, sid) {
+  return runHook("reinject.cjs", { temp, sessionId: sid, source: undefined });
+}
+
+test("reinject stamps changed sections with the current turn and keeps unchanged stamps", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "rtr-sidecar2-"));
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+  const temp = join(sandbox, "tmp");
+  const sid = "sidecar-maint-session";
+  runHook("session-start.cjs", { temp, sessionId: sid });
+  const base = join(temp, "claude-orientation");
+  const orient = join(base, `${sid}.orientation.txt`);
+
+  promptTurn(temp, sid);                                   // turn 1, nothing changed
+  appendFileSync(orient, "\nnew fact about them\n");       // touches the LAST section only
+  promptTurn(temp, sid);                                   // turn 2
+
+  const rows = readFileSync(join(base, `${sid}.state`), "utf8").trimEnd().split("\n").slice(1);
+  const last = rows[rows.length - 1];
+  assert.match(last, /^2 /);                               // changed at turn 2
+  assert.match(rows[0], /^0 /);                            // first section untouched since seed
+});
+
+test("a vanished section keeps its line marked gone; reinject emits nothing on stdout", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "rtr-sidecar3-"));
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+  const temp = join(sandbox, "tmp");
+  const sid = "sidecar-gone-session";
+  runHook("session-start.cjs", { temp, sessionId: sid });
+  const base = join(temp, "claude-orientation");
+  const orient = join(base, `${sid}.orientation.txt`);
+
+  const text = readFileSync(orient, "utf8");
+  writeFileSync(orient, text.replace(/^## Their words$/m, "## Renamed by the agent"));
+  const r = promptTurn(temp, sid);
+  assert.equal(r.stdout, "", "reinject must no longer emit context");
+
+  const rows = readFileSync(join(base, `${sid}.state`), "utf8");
+  assert.match(rows, /gone Their words$/m);
+  assert.match(rows, /^1 - [0-9a-f]{64} Renamed by the agent$/m);
+});
+
+test("an interrupted KEYED turn stamps .interrupted", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "rtr-int-"));
+  test.after(() => rmSync(sandbox, { recursive: true, force: true }));
+  const temp = join(sandbox, "tmp");
+  const sid = "keyed-interrupt-session";
+  runHook("session-start.cjs", { temp, sessionId: sid });
+  const base = join(temp, "claude-orientation");
+  promptTurn(temp, sid);                                   // turn 1, gate CLOSED 1
+  writeFileSync(join(base, `${sid}.gate`), "KEYED 1");     // door keyed it, turn never stopped
+  promptTurn(temp, sid);                                   // turn 2 arrives
+  assert.equal(readFileSync(join(base, `${sid}.interrupted`), "utf8"), "1");
 });

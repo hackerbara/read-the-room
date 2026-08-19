@@ -54,6 +54,37 @@ function stripTrailingNL(s) {
   return s.replace(/\n+$/, '');
 }
 
+// Duplicated from session-start.cjs — same shapes, per codebase convention.
+function splitSections(text) {
+  const out = []; let cur = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('## ')) { if (cur) out.push(cur); cur = { header: line.slice(3).trim(), body: [] }; }
+    else if (cur) cur.body.push(line);
+  }
+  if (cur) out.push(cur);
+  return out.map(s => ({ header: s.header, hash: crypto.createHash('sha256').update(s.body.join('\n')).digest('hex') }));
+}
+
+function renderStateV2(turn, fileHash, entries) {
+  return [`${turn} ${fileHash}`,
+    ...entries.map(e => `${e.changed} ${e.affirmed || '-'} ${e.hash} ${e.header}`)].join('\n') + '\n';
+}
+
+function writeAtomic(p, content) {
+  const tmp = `${p}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, content); fs.renameSync(tmp, p);
+}
+
+function parseStateV2(content) {
+  const lines = (content || '').split('\n').filter(Boolean);
+  const head = (lines[0] || '').trim().split(/\s+/);
+  const entries = lines.slice(1).map(l => {
+    const m = l.match(/^(\S+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+    return m ? { changed: m[1], affirmed: m[2] === '-' ? null : m[2], hash: m[3], header: m[4] } : null;
+  }).filter(Boolean);
+  return { turn: head[0] || '', hash: head[1] || '', entries };
+}
+
 function run(raw) {
   let input;
   try { input = JSON.parse(raw); } catch { input = {}; }
@@ -121,7 +152,7 @@ function run(raw) {
   //   stopped: stamped by the Stop hook; its absence marks an interrupted turn.
   let [prevStatus, prevTurn, prevFlag] = ['', '', ''];
   try { [prevStatus, prevTurn, prevFlag] = readTokens(fs.readFileSync(gateFile, 'utf8'), 3); } catch {}
-  if (prevStatus === 'CLOSED' && prevTurn !== String(count) && prevFlag !== 'stopped') {
+  if ((prevStatus === 'CLOSED' || prevStatus === 'KEYED') && prevTurn !== String(count) && prevFlag !== 'stopped') {
     writeSafe(path.join(base, `${sessionId}.interrupted`), prevTurn || 'unknown');
     try {
       for (const name of fs.readdirSync(msgDir)) {
@@ -131,66 +162,27 @@ function run(raw) {
   }
   writeSafe(gateFile, `CLOSED ${count}`);
 
-  const nowHash = sha256File(orientFile);
-  if (!nowHash) return;
+  const content = (() => { try { return fs.readFileSync(orientFile, 'utf8'); } catch { return null; } })();
+  if (content === null) return;
+  const nowHash = crypto.createHash('sha256').update(content).digest('hex');
 
-  let [lastTurn, lastHash] = ['', ''];
-  try { [lastTurn, lastHash] = readTokens(fs.readFileSync(stateFile, 'utf8'), 2); } catch {}
-  if (!/^[0-9]+$/.test(lastTurn)) lastTurn = '';
+  let prev = { turn: '', hash: '', entries: [] };
+  try { prev = parseStateV2(fs.readFileSync(stateFile, 'utf8')); } catch {}
 
-  if (!lastTurn || nowHash !== lastHash) {
-    writeSafe(stateFile, `${count} ${nowHash}`);
-    return;
-  }
+  const sections = splitSections(content);
+  const seen = new Set();
+  const entries = sections.map(s => {
+    seen.add(s.header);
+    const old = prev.entries.find(e => e.header === s.header);
+    if (!old) return { changed: String(count), affirmed: null, hash: s.hash, header: s.header };
+    if (old.hash !== s.hash && old.hash !== 'gone') return { ...old, changed: String(count), hash: s.hash };
+    if (old.hash === 'gone') return { ...old, changed: String(count), hash: s.hash }; // section returned
+    return old;
+  });
+  for (const e of prev.entries) if (!seen.has(e.header))
+    entries.push(e.hash === 'gone' ? e : { ...e, hash: 'gone' });
 
-  const stale = count - parseInt(lastTurn, 10);
-
-  // NUDGE_AT/REINJECT_AT/REPEAT skip bash's digit-sanitizing case pattern; a
-  // non-numeric override there fails `-eq`/`-ge` silently (no emission ever).
-  // Number() on a non-numeric string is NaN, and every NaN comparison below
-  // is false too, so the effect matches without replicating the mechanism.
-  const nudgeAt = Number(envOr('CLAUDE_ORIENTATION_NUDGE_AT', '5'));
-  const reinjectAt = Number(envOr('CLAUDE_ORIENTATION_REINJECT_AT', '10'));
-  const repeat = Number(envOr('CLAUDE_ORIENTATION_REPEAT', '5'));
-
-  if (stale === nudgeAt) {
-    emitJson({
-      hookSpecificOutput: {
-        hookEventName: 'UserPromptSubmit',
-        additionalContext: `Orientation: you have not changed \`${orientFile}\` in ${stale} turns.
-
-That may be right — if nothing has moved, nothing needs writing. But what they
-are doing right now, and what they have not seen, are the two lines that go
-stale fastest, and the conversation has had ${stale} turns to move under them.
-
-Worth a look. No contents included here on purpose; go read your own file.`
-      }
-    });
-    return;
-  }
-
-  if (stale >= reinjectAt && repeat > 0 && (stale - reinjectAt) % repeat === 0) {
-    let live = '';
-    try { live = stripTrailingNL(fs.readFileSync(orientFile).subarray(0, 5000).toString('utf8')); } catch {}
-    emitJson({
-      hookSpecificOutput: {
-        hookEventName: 'UserPromptSubmit',
-        additionalContext: `Orientation: unchanged for ${stale} turns. This is what it still says.
-
-Treat the age as part of the content. It was accurate when written; the
-conversation has moved ${stale} turns since, so read it as a record of where
-they were, not a report of where they are. It probably needs updating — and
-if it turns out to still be right, that is worth knowing too.
-
-\`\`\`
-${live}
-\`\`\`
-
-Update \`${orientFile}\`.`
-      }
-    });
-    return;
-  }
+  try { writeAtomic(stateFile, renderStateV2(String(count), nowHash, entries)); } catch {}
 }
 
 let data = '';
