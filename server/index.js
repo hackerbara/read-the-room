@@ -376,7 +376,7 @@ server.registerTool(
         }
       }
       const held = readKeyFile(keyFile);
-      if (held) appendLedger(ledgerFile, turnStr, "stayed-keyed", null, reasonText(held.reasons));
+      if (held && held.turn === turnStr) appendLedger(ledgerFile, turnStr, "stayed-keyed", null, reasonText(held.reasons));
       return text("Stayed in. The marker is all they will see this turn. The room keeps counting.");
     }
 

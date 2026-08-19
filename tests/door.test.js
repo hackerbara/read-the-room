@@ -244,6 +244,31 @@ test("stay lands as STAYED and writes the staynote, tolerating a missing orienta
   assert.equal(readFileSync(join(base, `${sid}.staynote`), "utf8"), "waiting on the retrieval agent");
 });
 
+test("stay ledgers stayed-keyed only for a key on disk that matches the current turn", async () => {
+  const { dir, temp, base } = sandbox("rtr-door-stay-keyed-");
+  test.after(() => rmSync(dir, { recursive: true, force: true }));
+  const sid = "door-stay-keyed-session";
+  seedSession(base, sid, { seedText: TEMPLATE, turn: 5 });
+
+  const { client, transport } = startClient(temp, sid);
+  test.after(() => client.close());
+  await client.connect(transport);
+
+  // A current-turn key on disk: staying in must ledger stayed-keyed.
+  writeFileSync(join(base, `${sid}.key`), "nonce1 5 0\nsetup deadbeef\n");
+  await call(client, { stay: true });
+  assert.match(readFileSync(join(base, `${sid}.ledger`), "utf8"), /^5 stayed-keyed - setup /m);
+
+  // A stale-turn key (left over from an earlier, interrupted turn): staying
+  // in must not ledger it — every other .key consumer checks turn-currency
+  // and this branch used to be the exception.
+  writeFileSync(join(base, `${sid}.key`), "nonce2 3 0\nsetup deadbeef\n");
+  const before = readFileSync(join(base, `${sid}.ledger`), "utf8");
+  await call(client, { stay: true });
+  const after = readFileSync(join(base, `${sid}.ledger`), "utf8");
+  assert.equal(after, before, "a stale-turn key must not produce a stayed-keyed line");
+});
+
 test("a clean, recently-touched file needs no key: gate opens, header ages are rendered", async () => {
   const { dir, temp, base } = sandbox("rtr-door-clean-");
   test.after(() => rmSync(dir, { recursive: true, force: true }));
