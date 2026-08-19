@@ -500,8 +500,21 @@ listened, whatever you meant by it, and that is how trust goes.`;
         }
         writeGate(sessionId, "OPEN");
         let renderEntries = entries;
+        // Fresh reasons satisfied by a live hash-move this turn (not
+        // affirm): `entries`/`.state` still carry the pre-edit changed-turn
+        // until reinject.cjs's next pass re-hashes and re-stamps them.
+        // Stamp those sections here so THIS response is truthful about when
+        // the edit landed — the edit really did happen this turn; `.state`
+        // itself catches up on the next reinject.
+        const editedFreshHeaders = held.reasons
+          .filter((r) => r.kind === "fresh" && !verdict.affirmed.includes(r.header))
+          .map((r) => r.header);
+        if (editedFreshHeaders.length) {
+          renderEntries = renderEntries.map((e) =>
+            editedFreshHeaders.includes(e.header) ? { ...e, changed: turnStr } : e);
+        }
         if (verdict.affirmed.length) {
-          renderEntries = entries.map((e) =>
+          renderEntries = renderEntries.map((e) =>
             verdict.affirmed.includes(e.header) ? { ...e, affirmed: turnStr } : e);
           try {
             writeAtomic(stateFile, renderStateV2(state.turn || turnStr, state.hash || nowHash, renderEntries));

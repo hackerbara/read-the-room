@@ -194,6 +194,10 @@ test("a fresh reason is satisfied by a live same-turn edit to the named section,
 
   const res = await call(client, { key: nonce });
   assert.match(res, /Key returned\. The door is open/);
+  // The edited section's age must render as changed THIS turn, not the
+  // pre-edit turn 0 still sitting in `.state` — `.state` itself only
+  // catches up on the next reinject pass.
+  assert.match(res, /## What they are doing right now \(changed turn 10, 0 ago\)/);
   assert.ok(!existsSync(join(base, `${sid}.key`)), "the key file is deleted on a satisfied return");
   assert.equal(readFileSync(join(base, `${sid}.gate`), "utf8"), "OPEN 10");
   assert.match(readFileSync(join(base, `${sid}.ledger`), "utf8"), /^10 satisfied /m);
